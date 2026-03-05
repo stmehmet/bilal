@@ -1,0 +1,70 @@
+version: "3.8"
+
+# ---- Bilal Home Adhan System ----
+# Orchestrates the Web UI, Adhan Scheduler, and Watchtower for auto-updates.
+
+services:
+  # --- Web Dashboard ---
+  web:
+    build:
+      context: .
+      target: web
+    container_name: bilal-web
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - bilal-data:/data
+      - ./audio:/audio:ro
+    environment:
+      - CONFIG_DIR=/data
+      - AUDIO_DIR=/audio
+      - SCHEDULER_PATH=/app/scheduler
+      - WEB_PORT=5000
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
+    networks:
+      - bilal-net
+      - host-access
+    # Run as non-root inside container (USER directive in Dockerfile)
+
+  # --- Adhan Scheduler ---
+  scheduler:
+    build:
+      context: .
+      target: scheduler
+    container_name: bilal-scheduler
+    restart: unless-stopped
+    network_mode: host          # Required for mDNS / Chromecast discovery
+    volumes:
+      - bilal-data:/data
+      - ./audio:/audio:ro
+    environment:
+      - CONFIG_DIR=/data
+      - AUDIO_DIR=/audio
+      - WEB_PORT=5000
+    depends_on:
+      - web
+
+  # --- Watchtower (automatic Docker image updates) ---
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: bilal-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600       # Check every hour
+      - WATCHTOWER_LABEL_ENABLE=true        # Only update labelled containers
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+volumes:
+  bilal-data:
+    driver: local
+
+networks:
+  bilal-net:
+    driver: bridge
+  host-access:
+    driver: bridge

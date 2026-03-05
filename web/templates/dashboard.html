@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bilal – Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
+    .card { @apply bg-slate-800 rounded-2xl shadow-lg p-6; }
+  </style>
+</head>
+<body class="text-slate-200 p-4 md:p-8">
+  <!-- Header -->
+  <header class="max-w-4xl mx-auto flex items-center justify-between mb-8">
+    <div>
+      <h1 class="text-3xl font-bold text-emerald-400">Bilal</h1>
+      <p class="text-slate-400 text-sm">
+        {{ config.city }}, {{ config.country }}
+        <span class="text-slate-500 ml-2">{{ config.timezone }}</span>
+      </p>
+    </div>
+    <a href="/logout" class="text-slate-400 hover:text-white text-sm">Logout</a>
+  </header>
+
+  <main class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Prayer Times -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Today's Prayer Times</h2>
+      {% if prayer_times %}
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {% for name in prayer_names %}
+        <div class="bg-slate-700/50 rounded-xl p-4 text-center
+                    {% if name in config.skip_prayers %}opacity-40{% endif %}">
+          <div class="text-slate-400 text-xs uppercase tracking-wider">{{ name }}</div>
+          <div class="text-2xl font-mono font-bold mt-1
+                      {% if name in config.skip_prayers %}line-through{% endif %}">
+            {{ prayer_times.get(name, '--:--') }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-slate-400">Location not configured. Use the settings below to set up.</p>
+      {% endif %}
+    </section>
+
+    <!-- Skip Prayers -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Skip Prayers</h2>
+      <p class="text-slate-400 text-sm mb-3">Uncheck prayers you don't want the Adhan to play for.</p>
+      <div class="flex flex-wrap gap-3" id="skip-section">
+        {% for name in prayer_names %}
+        <label class="flex items-center gap-2 bg-slate-700/50 rounded-lg px-4 py-2 cursor-pointer
+                      hover:bg-slate-700 transition-colors">
+          <input type="checkbox" class="prayer-toggle accent-emerald-500 w-4 h-4"
+                 data-prayer="{{ name }}"
+                 {% if name not in config.skip_prayers %}checked{% endif %}>
+          <span>{{ name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Settings</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <!-- Location -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Location</label>
+          <div class="flex gap-2">
+            <input id="lat" type="number" step="any" placeholder="Latitude"
+                   value="{{ config.latitude or '' }}"
+                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            <input id="lon" type="number" step="any" placeholder="Longitude"
+                   value="{{ config.longitude or '' }}"
+                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+          <button onclick="detectLocation()" id="detect-btn"
+                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300">
+            Auto-detect from IP
+          </button>
+        </div>
+
+        <!-- Calculation Method -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Calculation Method</label>
+          <select id="calc-method"
+                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            {% for m in methods %}
+            <option value="{{ m }}" {% if m == config.calculation_method %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Adhan Audio -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Adhan Audio</label>
+          <select id="adhan-file"
+                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            {% for f in audio_files %}
+            <option value="{{ f }}" {% if f == config.adhan_file %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+          <button onclick="previewAudio()"
+                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300">
+            Preview in Browser
+          </button>
+          <audio id="preview-player" class="hidden"></audio>
+        </div>
+
+        <!-- Fajr Audio -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Fajr Adhan Audio</label>
+          <select id="fajr-adhan-file"
+                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            {% for f in audio_files %}
+            <option value="{{ f }}" {% if f == config.fajr_adhan_file %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Volume -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Volume:
+            <span id="vol-label">{{ (config.volume * 100)|int }}%</span>
+          </label>
+          <input id="volume" type="range" min="0" max="100" value="{{ (config.volume * 100)|int }}"
+                 oninput="document.getElementById('vol-label').textContent = this.value + '%'"
+                 class="w-full accent-emerald-500">
+        </div>
+
+        <!-- SmartThings -->
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">SmartThings Token</label>
+          <input id="st-token" type="password" placeholder="Personal Access Token"
+                 value="{{ config.smartthings_token }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">SmartThings Device ID</label>
+          <input id="st-device" type="text" placeholder="Device UUID"
+                 value="{{ config.smartthings_device_id }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+      </div>
+
+      <button onclick="saveSettings()"
+              class="mt-6 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
+                     rounded-lg transition-colors">
+        Save Settings
+      </button>
+    </section>
+
+    <!-- Speakers -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-emerald-400">Speakers</h2>
+        <button onclick="discoverSpeakers()" id="discover-btn"
+                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors">
+          Discover Speakers
+        </button>
+      </div>
+      <div id="speakers-list">
+        {% if config.speakers %}
+        {% for name, info in config.speakers.items() %}
+        <div class="flex items-center justify-between bg-slate-700/50 rounded-lg px-4 py-3 mb-2">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" class="speaker-toggle accent-emerald-500 w-4 h-4"
+                   data-speaker="{{ name }}"
+                   {% if info.enabled %}checked{% endif %}>
+            <span>{{ name }}</span>
+          </label>
+          <button onclick="testSpeaker('{{ name }}')"
+                  class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
+                         px-3 py-1 rounded-lg transition-colors">
+            Test
+          </button>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-slate-500 text-sm">No speakers discovered yet. Click "Discover Speakers" to scan your network.</p>
+        {% endif %}
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 bg-emerald-600 text-white px-5 py-3 rounded-xl
+                         shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+  </div>
+
+  <script>
+    function toast(msg, error = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = el.className.replace('translate-y-20 opacity-0', 'translate-y-0 opacity-100');
+      if (error) {
+        el.classList.remove('bg-emerald-600');
+        el.classList.add('bg-red-600');
+      } else {
+        el.classList.remove('bg-red-600');
+        el.classList.add('bg-emerald-600');
+      }
+      setTimeout(() => {
+        el.className = el.className.replace('translate-y-0 opacity-100', 'translate-y-20 opacity-0');
+      }, 3000);
+    }
+
+    async function saveSettings() {
+      const skipPrayers = [];
+      document.querySelectorAll('.prayer-toggle').forEach(cb => {
+        if (!cb.checked) skipPrayers.push(cb.dataset.prayer);
+      });
+
+      const body = {
+        latitude: parseFloat(document.getElementById('lat').value) || null,
+        longitude: parseFloat(document.getElementById('lon').value) || null,
+        calculation_method: document.getElementById('calc-method').value,
+        adhan_file: document.getElementById('adhan-file').value,
+        fajr_adhan_file: document.getElementById('fajr-adhan-file').value,
+        volume: parseInt(document.getElementById('volume').value) / 100,
+        smartthings_token: document.getElementById('st-token').value,
+        smartthings_device_id: document.getElementById('st-device').value,
+        skip_prayers: skipPrayers,
+      };
+
+      const resp = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (resp.ok) {
+        toast('Settings saved! Reloading...');
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        toast('Failed to save settings', true);
+      }
+    }
+
+    async function detectLocation() {
+      const btn = document.getElementById('detect-btn');
+      btn.textContent = 'Detecting...';
+      const resp = await fetch('/api/detect-location', { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        document.getElementById('lat').value = data.latitude;
+        document.getElementById('lon').value = data.longitude;
+        toast(`Detected: ${data.city}, ${data.country}`);
+      } else {
+        toast('Detection failed', true);
+      }
+      btn.textContent = 'Auto-detect from IP';
+    }
+
+    async function discoverSpeakers() {
+      const btn = document.getElementById('discover-btn');
+      btn.textContent = 'Scanning...';
+      btn.disabled = true;
+      const resp = await fetch('/api/discover-speakers', { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        toast(`Found ${data.speakers.length} speaker(s)`);
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        toast('Discovery failed', true);
+      }
+      btn.textContent = 'Discover Speakers';
+      btn.disabled = false;
+    }
+
+    async function testSpeaker(name) {
+      toast(`Testing ${name}...`);
+      const resp = await fetch('/api/test-speaker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speaker: name }),
+      });
+      if (resp.ok) toast(`Playing on ${name}`);
+      else toast(`Test failed for ${name}`, true);
+    }
+
+    function previewAudio() {
+      const file = document.getElementById('adhan-file').value;
+      const player = document.getElementById('preview-player');
+      player.src = `/audio/${file}`;
+      player.classList.remove('hidden');
+      player.controls = true;
+      player.play();
+    }
+
+    // Auto-save speaker toggles
+    document.querySelectorAll('.speaker-toggle').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const speakers = {};
+        document.querySelectorAll('.speaker-toggle').forEach(el => {
+          speakers[el.dataset.speaker] = { enabled: el.checked };
+        });
+        await fetch('/api/speakers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(speakers),
+        });
+      });
+    });
+  </script>
+</body>
+</html>
