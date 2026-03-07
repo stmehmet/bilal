@@ -34,9 +34,9 @@ from config import (  # noqa: E402
     load_config,
     save_config,
 )
-from discovery import discover_chromecasts  # noqa: E402
+from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
 from geolocation import detect_location  # noqa: E402
-from adhan_scheduler import compute_prayer_times  # noqa: E402
+from adhan_scheduler import compute_prayer_times, compute_iqamah_times  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
@@ -121,10 +121,30 @@ def serve_audio(filename):
 @login_required
 def dashboard():
     config = load_config()
+    raw_times = {}
     times = {}
+    iqamah_times = {}
+    next_prayer = None
+
     if config.get("latitude") is not None:
-        times = compute_prayer_times(config)
-        times = {k: v.strftime("%I:%M %p") for k, v in times.items()}
+        import datetime, pytz
+        raw_times = compute_prayer_times(config)
+        tz = pytz.timezone(config.get("timezone", "UTC"))
+        now = datetime.datetime.now(tz)
+
+        # Format for display
+        times = {k: v.strftime("%I:%M %p") for k, v in raw_times.items()}
+
+        # Iqamah times (only for the five prayers, not Sunrise)
+        iq_raw = compute_iqamah_times(config, raw_times)
+        iqamah_times = {k: v.strftime("%I:%M %p") for k, v in iq_raw.items()}
+
+        # Next prayer countdown (ISO string for JS)
+        for prayer in PRAYER_NAMES:
+            pt = raw_times.get(prayer)
+            if pt and pt > now:
+                next_prayer = {"name": prayer, "iso": pt.isoformat()}
+                break
 
     audio_files = []
     if AUDIO_DIR.exists():
@@ -136,9 +156,11 @@ def dashboard():
         "dashboard.html",
         config=config,
         prayer_times=times,
+        iqamah_times=iqamah_times,
         prayer_names=PRAYER_NAMES,
         methods=CALCULATION_METHODS,
         audio_files=audio_files,
+        next_prayer=next_prayer,
     )
 
 
@@ -186,6 +208,22 @@ def update_config():
     if "country" in data:
         config["country"] = data["country"]
 
+    # Iqamah offsets
+    if "iqamah_offsets" in data:
+        offsets = config.get("iqamah_offsets", {})
+        for prayer in PRAYER_NAMES:
+            if prayer in data["iqamah_offsets"]:
+                offsets[prayer] = int(data["iqamah_offsets"][prayer])
+        config["iqamah_offsets"] = offsets
+
+    # Do Not Disturb
+    if "dnd_enabled" in data:
+        config["dnd_enabled"] = bool(data["dnd_enabled"])
+    if "dnd_start" in data:
+        config["dnd_start"] = data["dnd_start"]
+    if "dnd_end" in data:
+        config["dnd_end"] = data["dnd_end"]
+
     config["setup_complete"] = True
     save_config(config)
     return jsonify({"status": "ok"})
@@ -207,11 +245,16 @@ def api_detect_location():
 @login_required
 def api_discover_speakers():
     devices = discover_chromecasts(timeout=10)
+    meta = get_device_metadata(devices)
     config = load_config()
     speakers = config.get("speakers", {})
-    for name in devices:
+    for name, info in meta.items():
         if name not in speakers:
-            speakers[name] = {"enabled": True}
+            speakers[name] = {"enabled": True, "is_group": info["is_group"], "model": info["model"]}
+        else:
+            # Update metadata on re-scan
+            speakers[name]["is_group"] = info["is_group"]
+            speakers[name]["model"] = info["model"]
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"speakers": list(speakers.keys())})
@@ -270,6 +313,90 @@ def api_prayer_times():
     config = load_config()
     times = compute_prayer_times(config)
     return jsonify({k: v.isoformat() for k, v in times.items()})
+
+
+# ---------------------------------------------------------------------------
+# WiFi configuration
+# ---------------------------------------------------------------------------
+@app.route("/api/wifi/networks", methods=["GET"])
+@login_required
+def api_wifi_networks():
+    """List available WiFi networks via nmcli."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "device", "wifi", "list"],
+            capture_output=True, text=True, timeout=15,
+        )
+        networks = []
+        seen = set()
+        for line in result.stdout.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) < 4:
+                continue
+            ssid, signal, security, in_use = parts[0], parts[1], parts[2], parts[3]
+            if not ssid or ssid in seen:
+                continue
+            seen.add(ssid)
+            networks.append({
+                "ssid": ssid,
+                "signal": int(signal) if signal.isdigit() else 0,
+                "security": security or "Open",
+                "connected": in_use.strip() == "*",
+            })
+        networks.sort(key=lambda n: -n["signal"])
+        return jsonify({"networks": networks})
+    except FileNotFoundError:
+        return jsonify({"error": "nmcli not available on this system"}), 503
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/wifi/connect", methods=["POST"])
+@login_required
+def api_wifi_connect():
+    """Connect to a WiFi network."""
+    import subprocess
+    data = request.get_json(silent=True) or {}
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "").strip()
+    if not ssid:
+        return jsonify({"error": "SSID required"}), 400
+    try:
+        cmd = ["nmcli", "device", "wifi", "connect", ssid]
+        if password:
+            cmd += ["password", password]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return jsonify({"status": "connected", "ssid": ssid})
+        return jsonify({"error": result.stderr.strip() or "Connection failed"}), 500
+    except FileNotFoundError:
+        return jsonify({"error": "nmcli not available on this system"}), 503
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/wifi/status", methods=["GET"])
+@login_required
+def api_wifi_status():
+    """Return current WiFi connection info."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"],
+            capture_output=True, text=True, timeout=10,
+        )
+        for line in result.stdout.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4 and parts[1] == "wifi":
+                return jsonify({
+                    "device": parts[0],
+                    "state": parts[2],
+                    "connection": parts[3],
+                })
+        return jsonify({"state": "unknown"})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 if __name__ == "__main__":

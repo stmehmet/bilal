@@ -23,6 +23,12 @@ DEFAULT_CONFIG = {
     "fajr_adhan_file": "adhan_fajr.mp3",
     "volume": 0.5,
     "setup_complete": False,
+    # Iqamah offsets in minutes after adhan
+    "iqamah_offsets": {"Fajr": 20, "Dhuhr": 15, "Asr": 15, "Maghrib": 5, "Isha": 15},
+    # Do Not Disturb (mute adhan during these hours)
+    "dnd_enabled": False,
+    "dnd_start": "23:00",
+    "dnd_end": "05:30",
 }
 
 CALCULATION_METHODS = [

@@ -7,10 +7,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
-    .card { @apply bg-slate-800 rounded-2xl shadow-lg p-6; }
   </style>
 </head>
 <body class="text-slate-200 p-4 md:p-8">
+
   <!-- Header -->
   <header class="max-w-4xl mx-auto flex items-center justify-between mb-8">
     <div>
@@ -25,48 +25,75 @@
 
   <main class="max-w-4xl mx-auto space-y-6">
 
-    <!-- Prayer Times -->
+    <!-- Next Prayer Countdown -->
+    {% if next_prayer %}
+    <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
+      <div>
+        <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Next Prayer</div>
+        <div class="text-2xl font-bold text-white">{{ next_prayer.name }}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Starts in</div>
+        <div id="countdown" class="text-3xl font-mono font-bold text-emerald-400">--:--:--</div>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Prayer Times + Iqamah -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <h2 class="text-xl font-semibold text-emerald-400 mb-4">Today's Prayer Times</h2>
       {% if prayer_times %}
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {% for name in prayer_names %}
-        <div class="bg-slate-700/50 rounded-xl p-4 text-center
-                    {% if name in config.skip_prayers %}opacity-40{% endif %}">
-          <div class="text-slate-400 text-xs uppercase tracking-wider">{{ name }}</div>
-          <div class="text-2xl font-mono font-bold mt-1
-                      {% if name in config.skip_prayers %}line-through{% endif %}">
-            {{ prayer_times.get(name, '--:--') }}
-          </div>
-        </div>
-        {% endfor %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+              <th class="text-left pb-2">Prayer</th>
+              <th class="text-center pb-2">Adhan</th>
+              <th class="text-center pb-2">Iqamah</th>
+              <th class="text-center pb-2">Enabled</th>
+            </tr>
+          </thead>
+          <tbody>
+            {# Sunrise row (display only, not a prayer) #}
+            {% if prayer_times.get('Sunrise') %}
+            <tr class="border-b border-slate-700/50">
+              <td class="py-3 font-medium text-amber-400">🌅 Sunrise</td>
+              <td class="text-center text-amber-300 font-mono">{{ prayer_times.Sunrise }}</td>
+              <td class="text-center text-slate-600">—</td>
+              <td class="text-center text-slate-600">—</td>
+            </tr>
+            {% endif %}
+            {# Five prayers #}
+            {% for name in prayer_names %}
+            {% set skipped = name in config.skip_prayers %}
+            <tr class="border-b border-slate-700/50 {% if skipped %}opacity-40{% endif %}">
+              <td class="py-3 font-medium">{{ name }}</td>
+              <td class="text-center font-mono {% if skipped %}line-through{% endif %}">
+                {{ prayer_times.get(name, '--:--') }}
+              </td>
+              <td class="text-center font-mono text-emerald-300">
+                {{ iqamah_times.get(name, '--:--') }}
+              </td>
+              <td class="text-center">
+                <input type="checkbox" class="prayer-toggle accent-emerald-500 w-4 h-4"
+                       data-prayer="{{ name }}"
+                       {% if name not in config.skip_prayers %}checked{% endif %}>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
       {% else %}
       <p class="text-slate-400">Location not configured. Use the settings below to set up.</p>
       {% endif %}
     </section>
 
-    <!-- Skip Prayers -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Skip Prayers</h2>
-      <p class="text-slate-400 text-sm mb-3">Uncheck prayers you don't want the Adhan to play for.</p>
-      <div class="flex flex-wrap gap-3" id="skip-section">
-        {% for name in prayer_names %}
-        <label class="flex items-center gap-2 bg-slate-700/50 rounded-lg px-4 py-2 cursor-pointer
-                      hover:bg-slate-700 transition-colors">
-          <input type="checkbox" class="prayer-toggle accent-emerald-500 w-4 h-4"
-                 data-prayer="{{ name }}"
-                 {% if name not in config.skip_prayers %}checked{% endif %}>
-          <span>{{ name }}</span>
-        </label>
-        {% endfor %}
-      </div>
-    </section>
-
     <!-- Settings -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <h2 class="text-xl font-semibold text-emerald-400 mb-4">Settings</h2>
       <div class="grid md:grid-cols-2 gap-4">
+
         <!-- Location -->
         <div>
           <label class="block text-slate-400 text-sm mb-1">Location</label>
@@ -161,6 +188,68 @@
       </button>
     </section>
 
+    <!-- Iqamah Offsets -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <h2 class="text-xl font-semibold text-emerald-400 mb-1">Iqamah Offsets</h2>
+      <p class="text-slate-400 text-sm mb-4">Minutes after Adhan before Iqamah is called.</p>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {% for name in prayer_names %}
+        <div class="bg-slate-700/50 rounded-xl p-3 text-center">
+          <label class="block text-slate-400 text-xs uppercase tracking-wider mb-2">{{ name }}</label>
+          <input type="number" min="0" max="60"
+                 id="iqamah-{{ name }}"
+                 value="{{ config.iqamah_offsets.get(name, 15) }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5
+                        text-center text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+          <span class="text-slate-500 text-xs mt-1 block">min</span>
+        </div>
+        {% endfor %}
+      </div>
+      <button onclick="saveIqamah()"
+              class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
+                     rounded-lg transition-colors">
+        Save Iqamah Offsets
+      </button>
+    </section>
+
+    <!-- Do Not Disturb -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-emerald-400">Do Not Disturb</h2>
+          <p class="text-slate-400 text-sm mt-1">Mute the Adhan during sleep hours.</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="dnd-enabled" class="sr-only peer"
+                 {% if config.dnd_enabled %}checked{% endif %}>
+          <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer
+                      peer-checked:after:translate-x-full peer-checked:after:border-white
+                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                      peer-checked:bg-emerald-600"></div>
+        </label>
+      </div>
+      <div class="flex gap-4">
+        <div class="flex-1">
+          <label class="block text-slate-400 text-sm mb-1">Quiet from</label>
+          <input type="time" id="dnd-start" value="{{ config.dnd_start }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div class="flex-1">
+          <label class="block text-slate-400 text-sm mb-1">Quiet until</label>
+          <input type="time" id="dnd-end" value="{{ config.dnd_end }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+      </div>
+      <button onclick="saveDND()"
+              class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
+                     rounded-lg transition-colors">
+        Save DND Schedule
+      </button>
+    </section>
+
     <!-- Speakers -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <div class="flex items-center justify-between mb-4">
@@ -178,7 +267,15 @@
             <input type="checkbox" class="speaker-toggle accent-emerald-500 w-4 h-4"
                    data-speaker="{{ name }}"
                    {% if info.enabled %}checked{% endif %}>
-            <span>{{ name }}</span>
+            <div>
+              <span class="font-medium">{{ name }}</span>
+              {% if info.get('is_group') %}
+              <span class="ml-2 text-xs bg-purple-800/60 text-purple-300 px-2 py-0.5 rounded-full">Group</span>
+              {% endif %}
+              {% if info.get('model') %}
+              <span class="block text-xs text-slate-500">{{ info.model }}</span>
+              {% endif %}
+            </div>
           </label>
           <button onclick="testSpeaker('{{ name }}')"
                   class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
@@ -193,36 +290,88 @@
       </div>
     </section>
 
+    <!-- WiFi Configuration -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-emerald-400">WiFi</h2>
+          <p id="wifi-status" class="text-slate-400 text-sm mt-1">Loading...</p>
+        </div>
+        <button onclick="scanWifi()" id="wifi-scan-btn"
+                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors">
+          Scan Networks
+        </button>
+      </div>
+
+      <!-- Network list -->
+      <div id="wifi-networks" class="space-y-2 mb-4 hidden"></div>
+
+      <!-- Manual connect form -->
+      <details class="group">
+        <summary class="cursor-pointer text-sm text-slate-400 hover:text-slate-200 select-none">
+          Manual connect / hidden network
+        </summary>
+        <div class="mt-3 flex gap-2">
+          <input id="wifi-ssid" type="text" placeholder="Network name (SSID)"
+                 class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          <input id="wifi-password" type="password" placeholder="Password"
+                 class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          <button onclick="connectWifi(document.getElementById('wifi-ssid').value, document.getElementById('wifi-password').value)"
+                  class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+            Connect
+          </button>
+        </div>
+      </details>
+    </section>
+
   </main>
 
   <!-- Toast -->
-  <div id="toast" class="fixed bottom-6 right-6 bg-emerald-600 text-white px-5 py-3 rounded-xl
-                         shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+  <div id="toast"
+       class="fixed bottom-6 right-6 bg-emerald-600 text-white px-5 py-3 rounded-xl
+              shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
   </div>
 
   <script>
+    // ── Helpers ──────────────────────────────────────────────────────────────
     function toast(msg, error = false) {
       const el = document.getElementById('toast');
       el.textContent = msg;
-      el.className = el.className.replace('translate-y-20 opacity-0', 'translate-y-0 opacity-100');
-      if (error) {
-        el.classList.remove('bg-emerald-600');
-        el.classList.add('bg-red-600');
-      } else {
-        el.classList.remove('bg-red-600');
-        el.classList.add('bg-emerald-600');
-      }
+      el.className = el.className
+        .replace('translate-y-20 opacity-0', 'translate-y-0 opacity-100')
+        .replace(error ? 'bg-emerald-600' : 'bg-red-600', error ? 'bg-red-600' : 'bg-emerald-600');
       setTimeout(() => {
         el.className = el.className.replace('translate-y-0 opacity-100', 'translate-y-20 opacity-0');
       }, 3000);
     }
 
+    // ── Countdown timer ───────────────────────────────────────────────────────
+    {% if next_prayer %}
+    const nextPrayerISO = "{{ next_prayer.iso }}";
+    const countdownEl = document.getElementById('countdown');
+    function updateCountdown() {
+      const diff = Math.max(0, Math.floor((new Date(nextPrayerISO) - Date.now()) / 1000));
+      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      countdownEl.textContent = `${h}:${m}:${s}`;
+      if (diff === 0) {
+        countdownEl.textContent = 'Now';
+        setTimeout(() => location.reload(), 60000);
+      }
+    }
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+    {% endif %}
+
+    // ── Settings ──────────────────────────────────────────────────────────────
     async function saveSettings() {
       const skipPrayers = [];
       document.querySelectorAll('.prayer-toggle').forEach(cb => {
         if (!cb.checked) skipPrayers.push(cb.dataset.prayer);
       });
-
       const body = {
         latitude: parseFloat(document.getElementById('lat').value) || null,
         longitude: parseFloat(document.getElementById('lon').value) || null,
@@ -234,20 +383,47 @@
         smartthings_device_id: document.getElementById('st-device').value,
         skip_prayers: skipPrayers,
       };
-
       const resp = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (resp.ok) {
-        toast('Settings saved! Reloading...');
-        setTimeout(() => location.reload(), 1500);
-      } else {
-        toast('Failed to save settings', true);
-      }
+      if (resp.ok) { toast('Settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
+      else toast('Failed to save settings', true);
     }
 
+    // ── Iqamah offsets ────────────────────────────────────────────────────────
+    async function saveIqamah() {
+      const offsets = {};
+      {% for name in prayer_names %}
+      offsets['{{ name }}'] = parseInt(document.getElementById('iqamah-{{ name }}').value) || 0;
+      {% endfor %}
+      const resp = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iqamah_offsets: offsets }),
+      });
+      if (resp.ok) { toast('Iqamah offsets saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
+      else toast('Failed to save iqamah offsets', true);
+    }
+
+    // ── Do Not Disturb ────────────────────────────────────────────────────────
+    async function saveDND() {
+      const body = {
+        dnd_enabled: document.getElementById('dnd-enabled').checked,
+        dnd_start: document.getElementById('dnd-start').value,
+        dnd_end: document.getElementById('dnd-end').value,
+      };
+      const resp = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (resp.ok) toast('DND schedule saved!');
+      else toast('Failed to save DND schedule', true);
+    }
+
+    // ── Location ──────────────────────────────────────────────────────────────
     async function detectLocation() {
       const btn = document.getElementById('detect-btn');
       btn.textContent = 'Detecting...';
@@ -257,26 +433,21 @@
         document.getElementById('lat').value = data.latitude;
         document.getElementById('lon').value = data.longitude;
         toast(`Detected: ${data.city}, ${data.country}`);
-      } else {
-        toast('Detection failed', true);
-      }
+      } else toast('Detection failed', true);
       btn.textContent = 'Auto-detect from IP';
     }
 
+    // ── Speakers ──────────────────────────────────────────────────────────────
     async function discoverSpeakers() {
       const btn = document.getElementById('discover-btn');
-      btn.textContent = 'Scanning...';
-      btn.disabled = true;
+      btn.textContent = 'Scanning...'; btn.disabled = true;
       const resp = await fetch('/api/discover-speakers', { method: 'POST' });
       if (resp.ok) {
         const data = await resp.json();
         toast(`Found ${data.speakers.length} speaker(s)`);
         setTimeout(() => location.reload(), 1500);
-      } else {
-        toast('Discovery failed', true);
-      }
-      btn.textContent = 'Discover Speakers';
-      btn.disabled = false;
+      } else toast('Discovery failed', true);
+      btn.textContent = 'Discover Speakers'; btn.disabled = false;
     }
 
     async function testSpeaker(name) {
@@ -290,16 +461,6 @@
       else toast(`Test failed for ${name}`, true);
     }
 
-    function previewAudio() {
-      const file = document.getElementById('adhan-file').value;
-      const player = document.getElementById('preview-player');
-      player.src = `/audio/${file}`;
-      player.classList.remove('hidden');
-      player.controls = true;
-      player.play();
-    }
-
-    // Auto-save speaker toggles
     document.querySelectorAll('.speaker-toggle').forEach(cb => {
       cb.addEventListener('change', async () => {
         const speakers = {};
@@ -313,6 +474,103 @@
         });
       });
     });
+
+    // ── Audio preview ─────────────────────────────────────────────────────────
+    function previewAudio() {
+      const file = document.getElementById('adhan-file').value;
+      const player = document.getElementById('preview-player');
+      player.src = `/audio/${file}`;
+      player.classList.remove('hidden');
+      player.controls = true;
+      player.play();
+    }
+
+    // ── WiFi ──────────────────────────────────────────────────────────────────
+    async function loadWifiStatus() {
+      try {
+        const resp = await fetch('/api/wifi/status');
+        const data = await resp.json();
+        const el = document.getElementById('wifi-status');
+        if (data.connection && data.connection !== '--') {
+          el.textContent = `Connected to "${data.connection}"`;
+          el.classList.add('text-emerald-400');
+        } else if (data.state) {
+          el.textContent = `Status: ${data.state}`;
+        } else if (data.error) {
+          el.textContent = data.error;
+        }
+      } catch {}
+    }
+
+    async function scanWifi() {
+      const btn = document.getElementById('wifi-scan-btn');
+      const container = document.getElementById('wifi-networks');
+      btn.textContent = 'Scanning...'; btn.disabled = true;
+      container.innerHTML = '<p class="text-slate-500 text-sm">Scanning...</p>';
+      container.classList.remove('hidden');
+      try {
+        const resp = await fetch('/api/wifi/networks');
+        const data = await resp.json();
+        if (data.error) {
+          container.innerHTML = `<p class="text-red-400 text-sm">${data.error}</p>`;
+          return;
+        }
+        if (!data.networks.length) {
+          container.innerHTML = '<p class="text-slate-500 text-sm">No networks found.</p>';
+          return;
+        }
+        container.innerHTML = data.networks.map(n => {
+          const bars = n.signal > 66 ? '▂▄▆█' : n.signal > 33 ? '▂▄▆░' : '▂▄░░';
+          const lock = n.security !== 'Open' ? '🔒 ' : '';
+          const active = n.connected ? ' border border-emerald-500' : '';
+          return `<div class="flex items-center justify-between bg-slate-700/50 rounded-lg px-4 py-3${active}">
+            <div>
+              <span class="font-medium">${lock}${n.ssid}</span>
+              <span class="ml-3 text-slate-500 text-xs font-mono">${bars}</span>
+              ${n.connected ? '<span class="ml-2 text-xs text-emerald-400">✓ Connected</span>' : ''}
+            </div>
+            ${n.connected ? '' : `<button onclick="promptConnect('${n.ssid.replace(/'/g, "\\'")}', ${n.security === 'Open'})"
+              class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 px-3 py-1 rounded-lg transition-colors">
+              Connect
+            </button>`}
+          </div>`;
+        }).join('');
+      } catch (e) {
+        container.innerHTML = '<p class="text-red-400 text-sm">Scan failed.</p>';
+      }
+      btn.textContent = 'Scan Networks'; btn.disabled = false;
+    }
+
+    function promptConnect(ssid, isOpen) {
+      document.getElementById('wifi-ssid').value = ssid;
+      if (!isOpen) {
+        const pw = prompt(`Password for "${ssid}":`);
+        if (pw === null) return;
+        connectWifi(ssid, pw);
+      } else {
+        connectWifi(ssid, '');
+      }
+    }
+
+    async function connectWifi(ssid, password) {
+      if (!ssid) return toast('Enter an SSID', true);
+      toast(`Connecting to "${ssid}"...`);
+      const resp = await fetch('/api/wifi/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssid, password }),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        toast(`Connected to "${ssid}"!`);
+        loadWifiStatus();
+      } else {
+        toast(data.error || 'Connection failed', true);
+      }
+    }
+
+    // Init
+    loadWifiStatus();
   </script>
 </body>
 </html>
