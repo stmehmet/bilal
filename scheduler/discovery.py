@@ -20,8 +20,24 @@ def discover_chromecasts(timeout: int = 10) -> dict[str, pychromecast.Chromecast
     for cc in chromecasts:
         name = cc.cast_info.friendly_name
         devices[name] = cc
-        logger.info("Found device: %s (%s)", name, cc.cast_info.model_name)
+        cast_type = getattr(cc.cast_info, "cast_type", "cast")
+        logger.info("Found device: %s (%s, type=%s)", name, cc.cast_info.model_name, cast_type)
     return devices
+
+
+def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict[str, dict]:
+    """Return display metadata (model, type) for each discovered device.
+
+    Returns a mapping of friendly_name -> {model, is_group}.
+    """
+    meta = {}
+    for name, cc in chromecasts.items():
+        cast_type = getattr(cc.cast_info, "cast_type", "cast")
+        meta[name] = {
+            "model": cc.cast_info.model_name,
+            "is_group": cast_type == "group",
+        }
+    return meta
 
 
 def play_on_chromecast(

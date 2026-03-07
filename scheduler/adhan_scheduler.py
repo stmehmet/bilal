@@ -86,6 +86,7 @@ def compute_prayer_times(config: dict, date: datetime.date | None = None) -> dic
     # Map the adhan library keys to our prayer names
     key_map = {
         "Fajr": "fajr",
+        "Sunrise": "sunrise",
         "Dhuhr": "dhuhr",
         "Asr": "asr",
         "Maghrib": "maghrib",
@@ -103,12 +104,52 @@ def compute_prayer_times(config: dict, date: datetime.date | None = None) -> dic
     return result
 
 
+def compute_iqamah_times(config: dict, prayer_times: dict) -> dict:
+    """Compute iqamah times by adding offset (minutes) to each prayer time.
+
+    Returns a dict of prayer_name -> datetime (timezone-aware), only for
+    the five obligatory prayers (not Sunrise).
+    """
+    offsets = config.get("iqamah_offsets", {})
+    result = {}
+    for prayer in PRAYER_NAMES:
+        pt = prayer_times.get(prayer)
+        if pt is None:
+            continue
+        offset_min = offsets.get(prayer, 0)
+        result[prayer] = pt + datetime.timedelta(minutes=offset_min)
+    return result
+
+
+def _is_dnd_active(config: dict) -> bool:
+    """Return True if the current time falls within the Do Not Disturb window."""
+    if not config.get("dnd_enabled", False):
+        return False
+    try:
+        tz = pytz.timezone(config.get("timezone", "UTC"))
+        now = datetime.datetime.now(tz).time()
+        start = datetime.time(*map(int, config["dnd_start"].split(":")))
+        end = datetime.time(*map(int, config["dnd_end"].split(":")))
+        # Handle overnight windows (e.g. 23:00 – 05:30)
+        if start <= end:
+            return start <= now <= end
+        else:
+            return now >= start or now <= end
+    except Exception as exc:
+        logger.warning("DND check failed: %s", exc)
+        return False
+
+
 def trigger_adhan(prayer_name: str) -> None:
     """Called by the scheduler when it's time for a specific prayer."""
     config = load_config()
 
     if prayer_name in config.get("skip_prayers", []):
         logger.info("Skipping %s (disabled by user)", prayer_name)
+        return
+
+    if _is_dnd_active(config):
+        logger.info("Skipping %s – Do Not Disturb is active", prayer_name)
         return
 
     # Determine the audio file
