@@ -36,7 +36,8 @@ from config import (  # noqa: E402
 )
 from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
 from geolocation import detect_location  # noqa: E402
-from adhan_scheduler import compute_prayer_times, compute_iqamah_times  # noqa: E402
+from smartthings import list_devices as st_list_devices  # noqa: E402
+from adhan_scheduler import compute_prayer_times, compute_iqamah_times, validate_audio_files  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
@@ -216,6 +217,12 @@ def update_config():
                 offsets[prayer] = int(data["iqamah_offsets"][prayer])
         config["iqamah_offsets"] = offsets
 
+    # Iqamah notifications
+    if "iqamah_enabled" in data:
+        config["iqamah_enabled"] = bool(data["iqamah_enabled"])
+    if "iqamah_audio_file" in data:
+        config["iqamah_audio_file"] = data["iqamah_audio_file"]
+
     # Do Not Disturb
     if "dnd_enabled" in data:
         config["dnd_enabled"] = bool(data["dnd_enabled"])
@@ -227,6 +234,15 @@ def update_config():
     config["setup_complete"] = True
     save_config(config)
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/audio/validate", methods=["GET"])
+@login_required
+def api_audio_validate():
+    """Return a list of configured audio files that are missing from disk."""
+    config = load_config()
+    missing = validate_audio_files(config)
+    return jsonify({"missing": missing})
 
 
 @app.route("/api/detect-location", methods=["POST"])
@@ -305,6 +321,26 @@ def api_test_speaker():
         )
         return jsonify({"status": "ok" if ok else "failed"})
     return jsonify({"error": f"Speaker '{speaker_name}' not found"}), 404
+
+
+@app.route("/api/smartthings/devices", methods=["POST"])
+@login_required
+def api_smartthings_devices():
+    """List SmartThings devices using the configured token."""
+    config = load_config()
+    token = config.get("smartthings_token", "")
+    if not token:
+        return jsonify({"error": "SmartThings token not configured"}), 400
+    devices = st_list_devices(token)
+    result = [
+        {
+            "device_id": d.get("deviceId", ""),
+            "label": d.get("label", d.get("name", "Unknown")),
+            "type": d.get("deviceTypeName", ""),
+        }
+        for d in devices
+    ]
+    return jsonify({"devices": result})
 
 
 @app.route("/api/prayer-times", methods=["GET"])

@@ -25,6 +25,9 @@ DEFAULT_CONFIG = {
     "setup_complete": False,
     # Iqamah offsets in minutes after adhan
     "iqamah_offsets": {"Fajr": 20, "Dhuhr": 15, "Asr": 15, "Maghrib": 5, "Isha": 15},
+    # Iqamah audio notification
+    "iqamah_enabled": False,
+    "iqamah_audio_file": "iqamah_bell.mp3",
     # Do Not Disturb (mute adhan during these hours)
     "dnd_enabled": False,
     "dnd_start": "23:00",

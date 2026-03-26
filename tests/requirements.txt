@@ -1,2 +1,7 @@
 pytest>=8.0
 pytest-mock>=3.14
+flask>=3.0.0
+flask-login>=0.6.3
+flask-wtf>=1.2.1
+werkzeug>=3.0.0
+requests>=2.31.0
