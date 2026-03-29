@@ -174,10 +174,22 @@
         </div>
         <div>
           <label class="block text-slate-400 text-sm mb-1">SmartThings Device ID</label>
-          <input id="st-device" type="text" placeholder="Device UUID"
-                 value="{{ config.smartthings_device_id }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          <div class="flex gap-2">
+            <input id="st-device" type="text" placeholder="Device UUID"
+                   value="{{ config.smartthings_device_id }}"
+                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
+                    class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
+                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Enter a token first to browse devices">
+              Browse
+            </button>
+          </div>
+          <select id="st-device-select" onchange="selectSmartThingsDevice()"
+                  class="hidden mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2
+                         text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          </select>
         </div>
       </div>
 
@@ -190,8 +202,27 @@
 
     <!-- Iqamah Offsets -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-1">Iqamah Offsets</h2>
-      <p class="text-slate-400 text-sm mb-4">Minutes after Adhan before Iqamah is called.</p>
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-emerald-400">Iqamah Offsets</h2>
+          <p class="text-slate-400 text-sm mt-1">Minutes after Adhan before Iqamah is called.</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 mb-4 bg-slate-700/50 rounded-xl p-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="iqamah-enabled"
+                 {{ 'checked' if config.iqamah_enabled else '' }}
+                 class="w-4 h-4 accent-emerald-500">
+          <span class="text-sm text-white">Play audio alert at Iqamah time</span>
+        </label>
+        <select id="iqamah-audio-file"
+                class="ml-auto bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm
+                       text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          {% for f in audio_files %}
+          <option value="{{ f }}" {{ 'selected' if f == config.iqamah_audio_file else '' }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {% for name in prayer_names %}
         <div class="bg-slate-700/50 rounded-xl p-3 text-center">
@@ -366,6 +397,40 @@
     setInterval(updateCountdown, 1000);
     {% endif %}
 
+    // ── SmartThings Device Browser ──────────────────────────────────────────
+    async function browseSmartThingsDevices() {
+      const btn = document.getElementById('st-browse-btn');
+      const token = document.getElementById('st-token').value.trim();
+      if (!token) { toast('Enter a SmartThings token first', true); return; }
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      try {
+        const resp = await fetch('/api/smartthings/devices', { method: 'POST' });
+        if (!resp.ok) { toast('Failed to list devices', true); return; }
+        const data = await resp.json();
+        const sel = document.getElementById('st-device-select');
+        sel.innerHTML = '<option value="">-- Select a device --</option>';
+        data.devices.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.device_id;
+          opt.textContent = d.label + (d.type ? ` (${d.type})` : '');
+          sel.appendChild(opt);
+        });
+        sel.classList.remove('hidden');
+        if (data.devices.length === 0) toast('No devices found', true);
+      } catch (e) {
+        toast('Error browsing devices: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Browse';
+      }
+    }
+
+    function selectSmartThingsDevice() {
+      const sel = document.getElementById('st-device-select');
+      if (sel.value) document.getElementById('st-device').value = sel.value;
+    }
+
     // ── Settings ──────────────────────────────────────────────────────────────
     async function saveSettings() {
       const skipPrayers = [];
@@ -398,13 +463,18 @@
       {% for name in prayer_names %}
       offsets['{{ name }}'] = parseInt(document.getElementById('iqamah-{{ name }}').value) || 0;
       {% endfor %}
+      const body = {
+        iqamah_offsets: offsets,
+        iqamah_enabled: document.getElementById('iqamah-enabled').checked,
+        iqamah_audio_file: document.getElementById('iqamah-audio-file').value,
+      };
       const resp = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iqamah_offsets: offsets }),
+        body: JSON.stringify(body),
       });
-      if (resp.ok) { toast('Iqamah offsets saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
-      else toast('Failed to save iqamah offsets', true);
+      if (resp.ok) { toast('Iqamah settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
+      else toast('Failed to save iqamah settings', true);
     }
 
     // ── Do Not Disturb ────────────────────────────────────────────────────────
