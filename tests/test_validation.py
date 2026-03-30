@@ -2,6 +2,7 @@
 
 import json
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -404,3 +405,38 @@ class TestWifiSanitization:
             json={"ssid": "A" * 33, "password": "pass123"},
         )
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Config change detection
+# ---------------------------------------------------------------------------
+
+class TestConfigChangeDetection:
+    def test_save_creates_signal_file(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(cfg, "CONFIG_FILE", tmp_path / "config.json")
+        cfg.save_config({"test": True})
+        assert (tmp_path / ".config_changed").exists()
+
+    def test_config_changed_since_detects_change(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(cfg, "CONFIG_FILE", tmp_path / "config.json")
+
+        before = time.time() - 1
+        cfg.save_config({"test": True})
+        assert cfg.config_changed_since(before) is True
+
+    def test_config_changed_since_returns_false_when_no_change(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+        assert cfg.config_changed_since(time.time()) is False
+
+
+# ---------------------------------------------------------------------------
+# Version info in status
+# ---------------------------------------------------------------------------
+
+class TestVersionInfo:
+    def test_status_includes_version(self, logged_in_client):
+        resp = logged_in_client.get("/api/status")
+        data = resp.get_json()
+        assert "version" in data

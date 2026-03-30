@@ -25,6 +25,17 @@
 
   <main class="max-w-4xl mx-auto space-y-6">
 
+    <!-- Audio Warning Banner (populated by JS) -->
+    <div id="audio-warning" class="hidden bg-amber-900/60 border border-amber-700 rounded-2xl shadow-lg p-4">
+      <div class="flex items-start gap-3">
+        <span class="text-amber-400 text-xl mt-0.5">&#9888;</span>
+        <div>
+          <h3 class="text-amber-300 font-medium text-sm">Missing Audio Files</h3>
+          <p id="audio-warning-text" class="text-amber-200/80 text-sm mt-1"></p>
+        </div>
+      </div>
+    </div>
+
     <!-- Next Prayer Countdown -->
     {% if next_prayer %}
     <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
@@ -454,7 +465,14 @@
         body: JSON.stringify(body),
       });
       if (resp.ok) { toast('Settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
-      else toast('Failed to save settings', true);
+      else {
+        const data = await resp.json();
+        if (data.errors && data.errors.length) {
+          toast(data.errors[0], true);
+        } else {
+          toast('Failed to save settings', true);
+        }
+      }
     }
 
     // ── Iqamah offsets ────────────────────────────────────────────────────────
@@ -474,7 +492,10 @@
         body: JSON.stringify(body),
       });
       if (resp.ok) { toast('Iqamah settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
-      else toast('Failed to save iqamah settings', true);
+      else {
+        const data = await resp.json();
+        toast(data.errors ? data.errors[0] : 'Failed to save iqamah settings', true);
+      }
     }
 
     // ── Do Not Disturb ────────────────────────────────────────────────────────
@@ -490,7 +511,10 @@
         body: JSON.stringify(body),
       });
       if (resp.ok) toast('DND schedule saved!');
-      else toast('Failed to save DND schedule', true);
+      else {
+        const data = await resp.json();
+        toast(data.errors ? data.errors[0] : 'Failed to save DND schedule', true);
+      }
     }
 
     // ── Location ──────────────────────────────────────────────────────────────
@@ -639,8 +663,25 @@
       }
     }
 
+    // ── Audio file validation ────────────────────────────────────────────────
+    async function checkAudioFiles() {
+      try {
+        const resp = await fetch('/api/audio/validate');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.missing && data.missing.length > 0) {
+          const el = document.getElementById('audio-warning');
+          const text = document.getElementById('audio-warning-text');
+          text.textContent = 'The following audio files are missing: ' + data.missing.join(', ') +
+            '. Place them in the audio/ directory for the Adhan to play.';
+          el.classList.remove('hidden');
+        }
+      } catch {}
+    }
+
     // Init
     loadWifiStatus();
+    checkAudioFiles();
   </script>
 </body>
 </html>

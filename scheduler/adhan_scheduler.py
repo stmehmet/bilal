@@ -299,10 +299,13 @@ class AdhanSchedulerService:
     def _check_config_change(self) -> None:
         """Reschedule prayers if config has been updated."""
         import time
-        if config_changed_since(self._last_config_check):
-            logger.info("Config change detected, rescheduling prayers")
-            self.schedule_today()
-            self._last_config_check = time.time()
+        try:
+            if config_changed_since(self._last_config_check):
+                logger.info("Config change detected, rescheduling prayers")
+                self.schedule_today()
+                self._last_config_check = time.time()
+        except Exception as exc:
+            logger.error("Error checking config change: %s", exc)
 
     def schedule_today(self) -> None:
         """Remove old prayer jobs and schedule today's prayers."""
