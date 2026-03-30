@@ -23,6 +23,14 @@ PROVIDERS = [
         "country": "country",
         "tz": "timezone",
     },
+    {
+        "url": "http://ip-api.com/json/?fields=lat,lon,city,country,timezone",
+        "lat": "lat",
+        "lon": "lon",
+        "city": "city",
+        "country": "country",
+        "tz": "timezone",
+    },
 ]
 
 

@@ -305,3 +305,102 @@ class TestFieldTruncation:
         assert resp.status_code == 200
         data = logged_in_client.get("/api/config").get_json()
         assert len(data["city"]) == 100
+
+
+# ---------------------------------------------------------------------------
+# System status endpoint
+# ---------------------------------------------------------------------------
+
+class TestSystemStatus:
+    def test_status_returns_basic_info(self, logged_in_client):
+        resp = logged_in_client.get("/api/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "setup_complete" in data
+        assert "location_configured" in data
+        assert "server_time" in data
+        assert "audio_files_missing" in data
+
+    def test_status_shows_speaker_counts(self, logged_in_client):
+        # Configure some speakers
+        logged_in_client.post(
+            "/api/config",
+            json={"latitude": 21.0, "longitude": 39.0},
+        )
+        resp = logged_in_client.get("/api/status")
+        data = resp.get_json()
+        assert "speakers_count" in data
+        assert "speakers_enabled" in data
+
+
+# ---------------------------------------------------------------------------
+# Config export/import
+# ---------------------------------------------------------------------------
+
+class TestConfigExportImport:
+    def test_export_redacts_smartthings_token(self, logged_in_client):
+        logged_in_client.post(
+            "/api/config",
+            json={"smartthings_token": "secret-token-123"},
+        )
+        resp = logged_in_client.get("/api/config/export")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["smartthings_token"] == "***redacted***"
+
+    def test_export_has_download_header(self, logged_in_client):
+        resp = logged_in_client.get("/api/config/export")
+        assert "attachment" in resp.headers.get("Content-Disposition", "")
+
+    def test_import_merges_config(self, logged_in_client):
+        resp = logged_in_client.post(
+            "/api/config/import",
+            json={"city": "Istanbul", "volume": 0.7},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["keys_imported"] == 2
+
+        config = logged_in_client.get("/api/config").get_json()
+        assert config["city"] == "Istanbul"
+        assert config["volume"] == 0.7
+
+    def test_import_rejects_invalid_json(self, logged_in_client):
+        resp = logged_in_client.post(
+            "/api/config/import",
+            data="not json",
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+
+    def test_import_ignores_unsafe_keys(self, logged_in_client):
+        resp = logged_in_client.post(
+            "/api/config/import",
+            json={"smartthings_token": "steal-me", "city": "Test"},
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # Only 'city' should be imported, not 'smartthings_token'
+        assert data["keys_imported"] == 1
+
+
+# ---------------------------------------------------------------------------
+# WiFi SSID sanitization
+# ---------------------------------------------------------------------------
+
+class TestWifiSanitization:
+    @patch("subprocess.run")
+    def test_ssid_with_control_chars_rejected(self, mock_run, logged_in_client):
+        resp = logged_in_client.post(
+            "/api/wifi/connect",
+            json={"ssid": "evil\x00ssid", "password": "pass123"},
+        )
+        assert resp.status_code == 400
+
+    @patch("subprocess.run")
+    def test_ssid_too_long_rejected(self, mock_run, logged_in_client):
+        resp = logged_in_client.post(
+            "/api/wifi/connect",
+            json={"ssid": "A" * 33, "password": "pass123"},
+        )
+        assert resp.status_code == 400

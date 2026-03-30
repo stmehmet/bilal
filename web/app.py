@@ -489,6 +489,9 @@ def api_wifi_connect():
     password = data.get("password", "").strip()
     if not ssid:
         return jsonify({"error": "SSID required"}), 400
+    # Sanitize SSID: reject control characters and excessive length
+    if len(ssid) > 32 or any(ord(c) < 32 for c in ssid):
+        return jsonify({"error": "Invalid SSID"}), 400
     try:
         cmd = ["nmcli", "device", "wifi", "connect", ssid]
         if password:
@@ -524,6 +527,95 @@ def api_wifi_status():
         return jsonify({"state": "unknown"})
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+# ---------------------------------------------------------------------------
+# System status & maintenance
+# ---------------------------------------------------------------------------
+@app.route("/api/status", methods=["GET"])
+@login_required
+def api_status():
+    """Return system health information for monitoring."""
+    import datetime
+
+    config = load_config()
+    audio_missing = validate_audio_files(config)
+
+    status = {
+        "setup_complete": config.get("setup_complete", False),
+        "location_configured": config.get("latitude") is not None,
+        "city": config.get("city", "Unknown"),
+        "timezone": config.get("timezone", "UTC"),
+        "calculation_method": config.get("calculation_method", "ISNA"),
+        "speakers_count": len(config.get("speakers", {})),
+        "speakers_enabled": sum(
+            1 for s in config.get("speakers", {}).values() if s.get("enabled")
+        ),
+        "audio_files_missing": audio_missing,
+        "dnd_enabled": config.get("dnd_enabled", False),
+        "iqamah_enabled": config.get("iqamah_enabled", False),
+        "smartthings_configured": bool(config.get("smartthings_token")),
+        "server_time": datetime.datetime.now(
+            pytz.timezone(config.get("timezone", "UTC"))
+        ).isoformat(),
+    }
+
+    # Add next prayer info if location is configured
+    if config.get("latitude") is not None:
+        times = compute_prayer_times(config)
+        tz = pytz.timezone(config.get("timezone", "UTC"))
+        now = datetime.datetime.now(tz)
+        for prayer in PRAYER_NAMES:
+            pt = times.get(prayer)
+            if pt and pt > now:
+                delta = pt - now
+                status["next_prayer"] = prayer
+                status["next_prayer_time"] = pt.isoformat()
+                status["next_prayer_minutes"] = int(delta.total_seconds() / 60)
+                break
+
+    return jsonify(status)
+
+
+@app.route("/api/config/export", methods=["GET"])
+@login_required
+def api_config_export():
+    """Export configuration as a downloadable JSON file (excludes secrets)."""
+    config = load_config()
+    # Redact sensitive fields
+    safe_config = {k: v for k, v in config.items() if k != "smartthings_token"}
+    if config.get("smartthings_token"):
+        safe_config["smartthings_token"] = "***redacted***"
+    response = jsonify(safe_config)
+    response.headers["Content-Disposition"] = "attachment; filename=bilal-config.json"
+    return response
+
+
+@app.route("/api/config/import", methods=["POST"])
+@login_required
+def api_config_import():
+    """Import configuration from a JSON payload (merges with current config)."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    # Only allow importing safe keys
+    safe_keys = {
+        "latitude", "longitude", "timezone", "city", "country",
+        "calculation_method", "volume", "skip_prayers",
+        "adhan_file", "fajr_adhan_file",
+        "iqamah_offsets", "iqamah_enabled", "iqamah_audio_file",
+        "dnd_enabled", "dnd_start", "dnd_end",
+    }
+    config = load_config()
+    imported = 0
+    for key in safe_keys:
+        if key in data:
+            config[key] = data[key]
+            imported += 1
+
+    save_config(config)
+    return jsonify({"status": "ok", "keys_imported": imported})
 
 
 if __name__ == "__main__":
