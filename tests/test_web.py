@@ -26,7 +26,7 @@ class TestAuth:
 
     def test_create_password_too_short_rejected(self, app_client):
         resp = app_client.post("/login", data={"password": "abc"}, follow_redirects=True)
-        assert b"at least 6" in resp.data.lower() or resp.status_code == 200
+        assert b"at least 8" in resp.data.lower() or resp.status_code == 200
 
     def test_create_password_and_login(self, app_client):
         resp = app_client.post("/login", data={"password": "secure123"})

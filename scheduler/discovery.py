@@ -64,9 +64,14 @@ def play_on_chromecast(
         mc.block_until_active(timeout=30)
         logger.info("Playing on %s", device.cast_info.friendly_name)
         return True
-    except Exception as exc:
+    except pychromecast.error.PyChromecastError as exc:
         logger.error(
-            "Playback failed on %s: %s", device.cast_info.friendly_name, exc
+            "Chromecast error on %s: %s", device.cast_info.friendly_name, exc
+        )
+        return False
+    except (OSError, ConnectionError) as exc:
+        logger.error(
+            "Network error playing on %s: %s", device.cast_info.friendly_name, exc
         )
         return False
 

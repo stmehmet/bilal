@@ -1,10 +1,14 @@
 """Bilal – Home Adhan System Web Dashboard."""
 
 import json
+import logging
 import os
+import re
 import sys
+import time
 from pathlib import Path
 
+import pytz
 from flask import (
     Flask,
     flash,
@@ -24,6 +28,8 @@ from flask_login import (
     logout_user,
 )
 from werkzeug.security import check_password_hash, generate_password_hash
+
+logger = logging.getLogger(__name__)
 
 # Allow importing from the scheduler package
 sys.path.insert(0, os.getenv("SCHEDULER_PATH", "/app/scheduler"))
@@ -76,26 +82,58 @@ def _save_auth(data: dict) -> None:
         json.dump(data, f)
 
 
+# Simple in-memory rate limiter for login attempts
+_login_attempts: dict[str, list[float]] = {}
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def _is_rate_limited(ip: str) -> bool:
+    """Return True if the IP has exceeded login attempt limits."""
+    now = time.time()
+    attempts = _login_attempts.get(ip, [])
+    # Remove old attempts outside the window
+    attempts = [t for t in attempts if now - t < LOGIN_WINDOW_SECONDS]
+    _login_attempts[ip] = attempts
+    return len(attempts) >= MAX_LOGIN_ATTEMPTS
+
+
+def _record_login_attempt(ip: str) -> None:
+    _login_attempts.setdefault(ip, []).append(time.time())
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     auth = _load_auth()
+    client_ip = request.remote_addr or "unknown"
+
     # If no password set yet, redirect to initial setup
     if not auth.get("password_hash"):
         if request.method == "POST":
             pw = request.form.get("password", "")
-            if len(pw) < 6:
-                flash("Password must be at least 6 characters.", "error")
+            if len(pw) < 8:
+                flash("Password must be at least 8 characters.", "error")
                 return render_template("login.html", first_time=True)
             _save_auth({"password_hash": generate_password_hash(pw)})
             login_user(User())
+            logger.info("Initial password created from %s", client_ip)
             return redirect(url_for("dashboard"))
         return render_template("login.html", first_time=True)
 
     if request.method == "POST":
+        if _is_rate_limited(client_ip):
+            logger.warning("Login rate limited for %s", client_ip)
+            flash("Too many login attempts. Please try again later.", "error")
+            return render_template("login.html", first_time=False), 429
+
         pw = request.form.get("password", "")
         if check_password_hash(auth["password_hash"], pw):
+            _login_attempts.pop(client_ip, None)  # Clear on success
             login_user(User())
+            logger.info("Successful login from %s", client_ip)
             return redirect(url_for("dashboard"))
+        _record_login_attempt(client_ip)
+        logger.warning("Failed login attempt from %s", client_ip)
         flash("Incorrect password.", "error")
     return render_template("login.html", first_time=False)
 
@@ -112,6 +150,9 @@ def logout():
 # ---------------------------------------------------------------------------
 @app.route("/audio/<path:filename>")
 def serve_audio(filename):
+    # Only serve .mp3 files to prevent path traversal or unexpected file access
+    if not filename.endswith(".mp3") or "/" in filename or "\\" in filename:
+        return jsonify({"error": "Invalid audio file"}), 400
     return send_from_directory(str(AUDIO_DIR), filename)
 
 
@@ -128,7 +169,7 @@ def dashboard():
     next_prayer = None
 
     if config.get("latitude") is not None:
-        import datetime, pytz
+        import datetime
         raw_times = compute_prayer_times(config)
         tz = pytz.timezone(config.get("timezone", "UTC"))
         now = datetime.datetime.now(tz)
@@ -174,11 +215,31 @@ def get_config():
     return jsonify(load_config())
 
 
+def _validate_time_format(value: str) -> bool:
+    """Validate HH:MM time format."""
+    return bool(re.match(r"^([01]\d|2[0-3]):[0-5]\d$", value))
+
+
+def _validate_coordinate(lat: float, lon: float) -> str | None:
+    """Return an error message if coordinates are out of bounds, else None."""
+    if not (-90 <= lat <= 90):
+        return f"Latitude must be between -90 and 90, got {lat}"
+    if not (-180 <= lon <= 180):
+        return f"Longitude must be between -180 and 180, got {lon}"
+    return None
+
+
+def _validate_timezone(tz_name: str) -> bool:
+    """Check if the timezone string is valid."""
+    return tz_name in pytz.all_timezones
+
+
 @app.route("/api/config", methods=["POST"])
 @login_required
 def update_config():
     config = load_config()
     data = request.get_json(silent=True) or {}
+    errors = []
 
     for key in (
         "calculation_method",
@@ -190,6 +251,10 @@ def update_config():
         if key in data:
             config[key] = data[key]
 
+    if "calculation_method" in data:
+        if data["calculation_method"] not in CALCULATION_METHODS:
+            errors.append(f"Invalid calculation method: {data['calculation_method']}")
+
     if "volume" in data:
         config["volume"] = max(0.0, min(1.0, float(data["volume"])))
 
@@ -199,22 +264,39 @@ def update_config():
         ]
 
     if "latitude" in data and "longitude" in data:
-        config["latitude"] = float(data["latitude"])
-        config["longitude"] = float(data["longitude"])
+        try:
+            lat = float(data["latitude"])
+            lon = float(data["longitude"])
+            coord_err = _validate_coordinate(lat, lon)
+            if coord_err:
+                errors.append(coord_err)
+            else:
+                config["latitude"] = lat
+                config["longitude"] = lon
+        except (TypeError, ValueError):
+            errors.append("Latitude and longitude must be numeric")
 
     if "timezone" in data:
-        config["timezone"] = data["timezone"]
+        if _validate_timezone(data["timezone"]):
+            config["timezone"] = data["timezone"]
+        else:
+            errors.append(f"Invalid timezone: {data['timezone']}")
+
     if "city" in data:
-        config["city"] = data["city"]
+        config["city"] = str(data["city"])[:100]
     if "country" in data:
-        config["country"] = data["country"]
+        config["country"] = str(data["country"])[:100]
 
     # Iqamah offsets
     if "iqamah_offsets" in data:
         offsets = config.get("iqamah_offsets", {})
         for prayer in PRAYER_NAMES:
             if prayer in data["iqamah_offsets"]:
-                offsets[prayer] = int(data["iqamah_offsets"][prayer])
+                val = int(data["iqamah_offsets"][prayer])
+                if val < 0 or val > 120:
+                    errors.append(f"Iqamah offset for {prayer} must be 0-120 minutes")
+                else:
+                    offsets[prayer] = val
         config["iqamah_offsets"] = offsets
 
     # Iqamah notifications
@@ -227,9 +309,18 @@ def update_config():
     if "dnd_enabled" in data:
         config["dnd_enabled"] = bool(data["dnd_enabled"])
     if "dnd_start" in data:
-        config["dnd_start"] = data["dnd_start"]
+        if _validate_time_format(data["dnd_start"]):
+            config["dnd_start"] = data["dnd_start"]
+        else:
+            errors.append(f"Invalid DND start time format: {data['dnd_start']} (expected HH:MM)")
     if "dnd_end" in data:
-        config["dnd_end"] = data["dnd_end"]
+        if _validate_time_format(data["dnd_end"]):
+            config["dnd_end"] = data["dnd_end"]
+        else:
+            errors.append(f"Invalid DND end time format: {data['dnd_end']} (expected HH:MM)")
+
+    if errors:
+        return jsonify({"status": "error", "errors": errors}), 400
 
     config["setup_complete"] = True
     save_config(config)

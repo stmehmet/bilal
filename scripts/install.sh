@@ -8,7 +8,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${HOME}/bilal"
-REPO_URL="https://github.com/<your-username>/bilal.git"
+REPO_URL="https://github.com/stmehmet/bilal.git"
 
 log() { echo "[bilal-install] $*"; }
 

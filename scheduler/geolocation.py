@@ -55,8 +55,11 @@ def detect_location() -> dict | None:
                 "country": data.get(provider["country"], "Unknown"),
                 "timezone": data.get(provider["tz"], "UTC"),
             }
-        except Exception as exc:
-            logger.warning("Geolocation via %s failed: %s", provider["url"], exc)
+        except requests.RequestException as exc:
+            logger.warning("Geolocation request to %s failed: %s", provider["url"], exc)
+            continue
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("Geolocation parse error from %s: %s", provider["url"], exc)
             continue
 
     logger.error("All geolocation providers failed")
