@@ -27,6 +27,7 @@ from config import (
     AUDIO_DIR,
     CONFIG_DIR,
     PRAYER_NAMES,
+    config_changed_since,
     load_config,
 )
 from discovery import discover_chromecasts, play_on_all
@@ -263,9 +264,11 @@ class AdhanSchedulerService:
         jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{db_path}")}
         self.scheduler = BackgroundScheduler(jobstores=jobstores)
         self._job_ids: list[str] = []
+        self._last_config_check: float = 0.0
 
     def start(self) -> None:
         """Start the scheduler and set up the daily reschedule job."""
+        import time
         self.scheduler.start()
         # Warn about missing audio files at startup
         config = load_config()
@@ -273,6 +276,7 @@ class AdhanSchedulerService:
         if missing:
             logger.warning("Missing audio files at startup: %s", missing)
         self.schedule_today()
+        self._last_config_check = time.time()
 
         # Reschedule every day at midnight
         self.scheduler.add_job(
@@ -281,7 +285,24 @@ class AdhanSchedulerService:
             id="daily_reschedule",
             replace_existing=True,
         )
+
+        # Check for config changes every 30 seconds
+        self.scheduler.add_job(
+            self._check_config_change,
+            "interval",
+            seconds=30,
+            id="config_watcher",
+            replace_existing=True,
+        )
         logger.info("Adhan scheduler started")
+
+    def _check_config_change(self) -> None:
+        """Reschedule prayers if config has been updated."""
+        import time
+        if config_changed_since(self._last_config_check):
+            logger.info("Config change detected, rescheduling prayers")
+            self.schedule_today()
+            self._last_config_check = time.time()
 
     def schedule_today(self) -> None:
         """Remove old prayer jobs and schedule today's prayers."""

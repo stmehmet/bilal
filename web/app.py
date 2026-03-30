@@ -51,6 +51,10 @@ app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/audio"))
 AUTH_FILE = Path(os.getenv("CONFIG_DIR", "/data")) / "auth.json"
 
+# Read version from VERSION file at module level
+_version_file = Path(__file__).resolve().parent.parent / "VERSION"
+APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
+
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
@@ -351,7 +355,7 @@ def api_detect_location():
 @app.route("/api/discover-speakers", methods=["POST"])
 @login_required
 def api_discover_speakers():
-    devices = discover_chromecasts(timeout=10)
+    devices = discover_chromecasts(timeout=10, use_cache=False)
     meta = get_device_metadata(devices)
     config = load_config()
     speakers = config.get("speakers", {})
@@ -405,7 +409,7 @@ def api_test_speaker():
     web_port = os.getenv("WEB_PORT", "5000")
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
 
-    devices = discover_chromecasts(timeout=8)
+    devices = discover_chromecasts(timeout=8, use_cache=False)
     if speaker_name in devices:
         ok = play_on_chromecast(
             devices[speaker_name], media_url, volume=config.get("volume", 0.5)
@@ -529,6 +533,39 @@ def api_wifi_status():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/wifi/hotspot", methods=["POST"])
+@login_required
+def api_wifi_hotspot():
+    """Start or stop the WiFi setup hotspot."""
+    import subprocess
+
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "start")
+    script = Path(__file__).resolve().parent.parent / "scripts" / "captive-portal.sh"
+
+    if not script.exists():
+        return jsonify({"error": "Captive portal script not found"}), 404
+
+    try:
+        if action == "start":
+            cmd = ["bash", str(script), "hotspot"]
+        elif action == "stop":
+            cmd = ["bash", str(script), "stop"]
+        else:
+            return jsonify({"error": "Invalid action, use 'start' or 'stop'"}), 400
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return jsonify({"status": "ok", "action": action})
+        return jsonify({"error": result.stderr.strip() or "Command failed"}), 500
+    except FileNotFoundError:
+        return jsonify({"error": "bash not available"}), 503
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Hotspot command timed out"}), 504
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 # ---------------------------------------------------------------------------
 # System status & maintenance
 # ---------------------------------------------------------------------------
@@ -542,6 +579,7 @@ def api_status():
     audio_missing = validate_audio_files(config)
 
     status = {
+        "version": APP_VERSION,
         "setup_complete": config.get("setup_complete", False),
         "location_configured": config.get("latitude") is not None,
         "city": config.get("city", "Unknown"),

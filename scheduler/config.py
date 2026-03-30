@@ -72,7 +72,18 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    """Persist configuration to disk."""
+    """Persist configuration to disk and signal watchers."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
+    # Touch a signal file so the scheduler can detect config changes
+    _signal_file = CONFIG_DIR / ".config_changed"
+    _signal_file.write_text(str(os.getpid()))
+
+
+def config_changed_since(last_check: float) -> bool:
+    """Return True if config has been modified since last_check timestamp."""
+    signal_file = CONFIG_DIR / ".config_changed"
+    if not signal_file.exists():
+        return False
+    return signal_file.stat().st_mtime > last_check

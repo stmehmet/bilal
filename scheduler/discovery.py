@@ -2,17 +2,33 @@
 
 import logging
 import time
+import threading
 
 import pychromecast
 
 logger = logging.getLogger(__name__)
 
+# Discovery cache to avoid rescanning on every prayer time
+_cache_lock = threading.Lock()
+_cached_devices: dict[str, pychromecast.Chromecast] = {}
+_cache_timestamp: float = 0
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
-def discover_chromecasts(timeout: int = 10) -> dict[str, pychromecast.Chromecast]:
+
+def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str, pychromecast.Chromecast]:
     """Discover all Chromecast-compatible devices on the local network.
 
     Returns a mapping of friendly_name -> Chromecast object.
+    Uses a cache to avoid slow mDNS scans on every prayer playback.
     """
+    global _cached_devices, _cache_timestamp
+
+    if use_cache:
+        with _cache_lock:
+            if _cached_devices and (time.time() - _cache_timestamp) < CACHE_TTL_SECONDS:
+                logger.debug("Using cached Chromecast devices (%d devices)", len(_cached_devices))
+                return _cached_devices
+
     logger.info("Scanning for Chromecast devices (timeout=%ds)...", timeout)
     browser = pychromecast.get_chromecasts(timeout=timeout)
     chromecasts = browser[0]
@@ -22,6 +38,11 @@ def discover_chromecasts(timeout: int = 10) -> dict[str, pychromecast.Chromecast
         devices[name] = cc
         cast_type = getattr(cc.cast_info, "cast_type", "cast")
         logger.info("Found device: %s (%s, type=%s)", name, cc.cast_info.model_name, cast_type)
+
+    with _cache_lock:
+        _cached_devices = devices
+        _cache_timestamp = time.time()
+
     return devices
 
 
