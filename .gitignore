@@ -3,3 +3,14 @@ __pycache__/
 .env
 !audio/.gitkeep
 .venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+config.json
+auth.json
+.config_changed

@@ -38,6 +38,8 @@ ENV PYTHONUNBUFFERED=1
 ENV CONFIG_DIR=/data
 ENV AUDIO_DIR=/audio
 WORKDIR /app/scheduler
+HEALTHCHECK --interval=60s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "from config import load_config; load_config()" || exit 1
 CMD ["python", "main.py"]
 
 # --- Web target ---
@@ -50,4 +52,6 @@ ENV SCHEDULER_PATH=/app/scheduler
 ENV WEB_PORT=5000
 WORKDIR /app/web
 EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/login')" || exit 1
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]

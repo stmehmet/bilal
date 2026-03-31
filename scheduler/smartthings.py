@@ -21,7 +21,7 @@ def list_devices(token: str) -> list[dict]:
         )
         resp.raise_for_status()
         return resp.json().get("items", [])
-    except Exception as exc:
+    except requests.RequestException as exc:
         logger.error("SmartThings device listing failed: %s", exc)
         return []
 
@@ -57,7 +57,7 @@ def send_notification(token: str, device_id: str, message: str) -> bool:
         resp.raise_for_status()
         logger.info("SmartThings notification sent to %s", device_id)
         return True
-    except Exception as exc:
+    except requests.RequestException as exc:
         logger.error("SmartThings notification failed: %s", exc)
         return False
 
@@ -92,7 +92,7 @@ def play_audio_on_device(token: str, device_id: str, audio_url: str) -> bool:
         resp.raise_for_status()
         logger.info("SmartThings audio playback started on %s", device_id)
         return True
-    except Exception as exc:
+    except requests.RequestException as exc:
         logger.warning(
             "SmartThings audio playback failed on %s: %s, "
             "falling back to notification",

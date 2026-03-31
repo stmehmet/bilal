@@ -1,8 +1,11 @@
 """Shared configuration for the Adhan scheduler."""
 
 import json
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/data"))
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -61,13 +64,26 @@ def load_config() -> dict:
             with open(CONFIG_FILE, "r") as f:
                 stored = json.load(f)
             config.update(stored)
-        except (json.JSONDecodeError, OSError):
-            pass
+        except json.JSONDecodeError as exc:
+            logger.error("Corrupt config file %s: %s", CONFIG_FILE, exc)
+        except OSError as exc:
+            logger.error("Cannot read config file %s: %s", CONFIG_FILE, exc)
     return config
 
 
 def save_config(config: dict) -> None:
-    """Persist configuration to disk."""
+    """Persist configuration to disk and signal watchers."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
+    # Touch a signal file so the scheduler can detect config changes
+    _signal_file = CONFIG_DIR / ".config_changed"
+    _signal_file.write_text(str(os.getpid()))
+
+
+def config_changed_since(last_check: float) -> bool:
+    """Return True if config has been modified since last_check timestamp."""
+    signal_file = CONFIG_DIR / ".config_changed"
+    if not signal_file.exists():
+        return False
+    return signal_file.stat().st_mtime > last_check

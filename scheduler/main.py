@@ -1,6 +1,7 @@
 """Entry point for the Adhan scheduler service."""
 
 import logging
+import os
 import signal
 import sys
 import time
@@ -9,9 +10,13 @@ from config import load_config, save_config
 from geolocation import detect_location
 from adhan_scheduler import AdhanSchedulerService
 
+LOG_FORMAT = os.getenv(
+    "LOG_FORMAT",
+    "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
+    format=LOG_FORMAT,
 )
 logger = logging.getLogger("bilal")
 

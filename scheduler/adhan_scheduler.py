@@ -27,6 +27,7 @@ from config import (
     AUDIO_DIR,
     CONFIG_DIR,
     PRAYER_NAMES,
+    config_changed_since,
     load_config,
 )
 from discovery import discover_chromecasts, play_on_all
@@ -177,6 +178,30 @@ def _resolve_audio_file(prayer_name: str, config: dict) -> str | None:
     return None
 
 
+def _play_on_speakers(media_url: str, config: dict, event_label: str) -> None:
+    """Play audio on all enabled Chromecast speakers and SmartThings devices."""
+    volume = config.get("volume", 0.5)
+
+    # --- Chromecast playback ---
+    speakers = config.get("speakers", {})
+    enabled = [name for name, info in speakers.items() if info.get("enabled", False)]
+    if enabled:
+        try:
+            devices = discover_chromecasts(timeout=8)
+            results = play_on_all(devices, enabled, media_url, volume=volume)
+            for name, ok in results.items():
+                status = "success" if ok else "FAILED"
+                logger.info("  %s -> %s", name, status)
+        except Exception as exc:
+            logger.error("%s Chromecast playback error: %s", event_label, exc)
+
+    # --- SmartThings playback ---
+    st_token = config.get("smartthings_token", "")
+    st_device = config.get("smartthings_device_id", "")
+    if st_token and st_device:
+        play_audio_on_device(st_token, st_device, media_url)
+
+
 def trigger_adhan(prayer_name: str) -> None:
     """Called by the scheduler when it's time for a specific prayer."""
     config = load_config()
@@ -198,28 +223,9 @@ def trigger_adhan(prayer_name: str) -> None:
     local_ip = _get_local_ip()
     web_port = os.getenv("WEB_PORT", "5000")
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
-    volume = config.get("volume", 0.5)
 
     logger.info("Adhan for %s – playing %s", prayer_name, media_url)
-
-    # --- Chromecast playback ---
-    speakers = config.get("speakers", {})
-    enabled = [name for name, info in speakers.items() if info.get("enabled", False)]
-    if enabled:
-        try:
-            devices = discover_chromecasts(timeout=8)
-            results = play_on_all(devices, enabled, media_url, volume=volume)
-            for name, ok in results.items():
-                status = "success" if ok else "FAILED"
-                logger.info("  %s -> %s", name, status)
-        except Exception as exc:
-            logger.error("Chromecast playback error: %s", exc)
-
-    # --- SmartThings playback ---
-    st_token = config.get("smartthings_token", "")
-    st_device = config.get("smartthings_device_id", "")
-    if st_token and st_device:
-        play_audio_on_device(st_token, st_device, media_url)
+    _play_on_speakers(media_url, config, f"Adhan ({prayer_name})")
 
 
 def trigger_iqamah(prayer_name: str) -> None:
@@ -245,28 +251,9 @@ def trigger_iqamah(prayer_name: str) -> None:
     local_ip = _get_local_ip()
     web_port = os.getenv("WEB_PORT", "5000")
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
-    volume = config.get("volume", 0.5)
 
     logger.info("Iqamah for %s – playing %s", prayer_name, media_url)
-
-    # --- Chromecast playback ---
-    speakers = config.get("speakers", {})
-    enabled = [name for name, info in speakers.items() if info.get("enabled", False)]
-    if enabled:
-        try:
-            devices = discover_chromecasts(timeout=8)
-            results = play_on_all(devices, enabled, media_url, volume=volume)
-            for name, ok in results.items():
-                status = "success" if ok else "FAILED"
-                logger.info("  %s -> %s", name, status)
-        except Exception as exc:
-            logger.error("Chromecast iqamah playback error: %s", exc)
-
-    # --- SmartThings notification ---
-    st_token = config.get("smartthings_token", "")
-    st_device = config.get("smartthings_device_id", "")
-    if st_token and st_device:
-        play_audio_on_device(st_token, st_device, media_url)
+    _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})")
 
 
 class AdhanSchedulerService:
@@ -277,9 +264,11 @@ class AdhanSchedulerService:
         jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{db_path}")}
         self.scheduler = BackgroundScheduler(jobstores=jobstores)
         self._job_ids: list[str] = []
+        self._last_config_check: float = 0.0
 
     def start(self) -> None:
         """Start the scheduler and set up the daily reschedule job."""
+        import time
         self.scheduler.start()
         # Warn about missing audio files at startup
         config = load_config()
@@ -287,6 +276,7 @@ class AdhanSchedulerService:
         if missing:
             logger.warning("Missing audio files at startup: %s", missing)
         self.schedule_today()
+        self._last_config_check = time.time()
 
         # Reschedule every day at midnight
         self.scheduler.add_job(
@@ -295,15 +285,35 @@ class AdhanSchedulerService:
             id="daily_reschedule",
             replace_existing=True,
         )
+
+        # Check for config changes every 30 seconds
+        self.scheduler.add_job(
+            self._check_config_change,
+            "interval",
+            seconds=30,
+            id="config_watcher",
+            replace_existing=True,
+        )
         logger.info("Adhan scheduler started")
+
+    def _check_config_change(self) -> None:
+        """Reschedule prayers if config has been updated."""
+        import time
+        try:
+            if config_changed_since(self._last_config_check):
+                logger.info("Config change detected, rescheduling prayers")
+                self.schedule_today()
+                self._last_config_check = time.time()
+        except Exception as exc:
+            logger.error("Error checking config change: %s", exc)
 
     def schedule_today(self) -> None:
         """Remove old prayer jobs and schedule today's prayers."""
         for jid in self._job_ids:
             try:
                 self.scheduler.remove_job(jid)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Could not remove job %s: %s", jid, exc)
         self._job_ids.clear()
 
         config = load_config()
