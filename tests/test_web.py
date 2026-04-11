@@ -202,7 +202,11 @@ class TestWiFi:
     @patch("subprocess.run", side_effect=FileNotFoundError)
     def test_wifi_status_handles_nmcli_missing(self, mock_run, logged_in_client):
         resp = logged_in_client.get("/api/wifi/status")
-        assert resp.status_code == 500
+        # 503 Service Unavailable: nmcli is not installed in the container.
+        # The endpoint returns a friendly message directing users to SSH.
+        assert resp.status_code == 503
+        data = resp.get_json()
+        assert "error" in data
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +251,44 @@ class TestAudio:
     def test_audio_validate_returns_missing_files(self, logged_in_client):
         # Default config references per-prayer adhan files which don't exist
         # in the tmp audio dir, so all five should be reported missing.
+        # Filenames now encode the traditional Ottoman maqam per prayer:
+        # Saba (Fajr), Uşşak (Dhuhr), Rast (Asr), Segâh (Maghrib), Hicaz (Isha).
         resp = logged_in_client.get("/api/audio/validate")
         assert resp.status_code == 200
         data = resp.get_json()
         assert len(data["missing"]) == 5
-        assert "adhan_fajr_rec2.mp3" in data["missing"]
-        assert "adhan_dhuhr_rec2.mp3" in data["missing"]
+        assert "adhan_fajr_rec2_saba.mp3" in data["missing"]
+        assert "adhan_dhuhr_rec2_ussak.mp3" in data["missing"]
+
+
+# ---------------------------------------------------------------------------
+# Audio file display label parser
+# ---------------------------------------------------------------------------
+
+class TestAudioDisplayLabel:
+    """The parser turns ASCII filenames into human-readable labels with proper
+    Turkish orthography for known muezzins and maqams."""
+
+    @pytest.mark.parametrize("filename,expected", [
+        # Known muezzin + known maqam (the bundled recordings)
+        ("adhan_fajr_rec1_saba.mp3",       "Saba | Recording 1"),
+        ("adhan_fajr_rec2_saba.mp3",    "Saba | Recording 2"),
+        ("adhan_dhuhr_rec1_ussak.mp3",     "Uşşak | Recording 1"),
+        ("adhan_dhuhr_rec2_ussak.mp3",  "Uşşak | Recording 2"),
+        ("adhan_asr_rec1_rast.mp3",        "Rast | Recording 1"),
+        ("adhan_asr_rec2_rast.mp3",     "Rast | Recording 2"),
+        ("adhan_maghrib_rec1_segah.mp3",   "Segâh | Recording 1"),
+        ("adhan_maghrib_rec2_segah.mp3","Segâh | Recording 2"),
+        ("adhan_isha_rec1_hicaz.mp3",      "Hicaz | Recording 1"),
+        ("adhan_isha_rec2_hicaz.mp3",   "Hicaz | Recording 2"),
+        # Unknown muezzin — camelCase fallback
+        ("adhan_fajr_abdulbasit.mp3",             "Abdulbasit"),
+        # Unknown muezzin + unknown maqam — both fall back
+        ("adhan_fajr_someone_unknownMaqam.mp3",   "Unknown Maqam | Someone"),
+        # Non-adhan filename (e.g. iqamah) — cleaned-up stem
+        ("iqamah_bell.mp3",                        "Iqamah Bell"),
+        ("bells.mp3",                              "Bells"),
+    ])
+    def test_label_parsing(self, filename, expected):
+        from app import audio_display_label
+        assert audio_display_label(filename) == expected

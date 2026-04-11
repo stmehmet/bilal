@@ -3,12 +3,17 @@
 
 services:
   # --- Web Dashboard ---
+  # Runs on the host network because the "Discover Speakers" endpoint calls
+  # pychromecast, which uses mDNS multicast on 224.0.0.251:5353. Docker's
+  # default bridge network does not forward multicast traffic, so a bridged
+  # web container would always return an empty speaker list. Host networking
+  # is also fine from a security standpoint: this is a single-purpose
+  # appliance where we WANT port 5000 exposed directly on LAN + Tailscale.
   web:
     image: ghcr.io/stmehmet/bilal-web:latest
     container_name: bilal-web
     restart: unless-stopped
-    ports:
-      - "5000:5000"
+    network_mode: host          # Required for mDNS / Chromecast discovery
     volumes:
       - bilal-data:/data
       - ./audio:/audio:ro
@@ -18,16 +23,8 @@ services:
       - SCHEDULER_PATH=/app/scheduler
       - WEB_PORT=5000
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
-    networks:
-      - bilal-net
-      - host-access
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
     # Run as non-root inside container (USER directive in Dockerfile)
 
   # --- Adhan Scheduler ---
@@ -48,11 +45,6 @@ services:
         condition: service_healthy
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
 
   # --- Watchtower (automatic Docker image updates) ---
   # NOTE: use nickfedor/watchtower (actively maintained fork). The original
@@ -78,9 +70,3 @@ services:
 volumes:
   bilal-data:
     driver: local
-
-networks:
-  bilal-net:
-    driver: bridge
-  host-access:
-    driver: bridge

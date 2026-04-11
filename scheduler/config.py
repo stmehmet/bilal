@@ -23,12 +23,14 @@ DEFAULT_CONFIG = {
     "smartthings_token": "",
     "smartthings_device_id": "",
     # Per-prayer adhan audio files. Keys must match PRAYER_NAMES.
+    # Each prayer is traditionally recited in a specific Ottoman maqam:
+    # Saba (Fajr), Uşşak (Dhuhr), Rast (Asr), Segâh (Maghrib), Hicaz (Isha).
     "adhan_audio_files": {
-        "Fajr": "adhan_fajr_rec2.mp3",
-        "Dhuhr": "adhan_dhuhr_rec2.mp3",
-        "Asr": "adhan_asr_rec2.mp3",
-        "Maghrib": "adhan_maghrib_rec2.mp3",
-        "Isha": "adhan_isha_rec2.mp3",
+        "Fajr": "adhan_fajr_rec2_saba.mp3",
+        "Dhuhr": "adhan_dhuhr_rec2_ussak.mp3",
+        "Asr": "adhan_asr_rec2_rast.mp3",
+        "Maghrib": "adhan_maghrib_rec2_segah.mp3",
+        "Isha": "adhan_isha_rec2_hicaz.mp3",
     },
     "volume": 0.5,
     "setup_complete": False,

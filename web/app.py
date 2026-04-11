@@ -55,6 +55,84 @@ AUTH_FILE = Path(os.getenv("CONFIG_DIR", "/data")) / "auth.json"
 _version_file = Path(__file__).resolve().parent.parent / "VERSION"
 APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "dev"
 
+
+# ---------------------------------------------------------------------------
+# Audio file display labels
+# ---------------------------------------------------------------------------
+# Known muezzins and maqams rendered with proper Turkish orthography. Filenames
+# stay ASCII (so they work cleanly in URLs, shells, and filesystems), while the
+# display layer maps each ASCII slug to its real diacritical form.
+MUEZZIN_LABELS: dict[str, str] = {
+    "rec1": "Recording 1",
+    "rec2": "Recording 2",
+}
+
+MAQAM_LABELS: dict[str, str] = {
+    "saba": "Saba",
+    "ussak": "Uşşak",
+    "rast": "Rast",
+    "segah": "Segâh",
+    "hicaz": "Hicaz",
+}
+
+
+def _camel_to_title(s: str) -> str:
+    """Convert camelCase to Title Case: 'rec1' -> 'Recording 1'.
+
+    Used as a fallback for unknown muezzins/maqams not in the label tables.
+    """
+    out: list[str] = []
+    for i, c in enumerate(s):
+        if i > 0 and c.isupper():
+            out.append(" ")
+        out.append(c)
+    return "".join(out).title()
+
+
+def audio_display_label(filename: str) -> str:
+    """Return a human-readable label for an audio file.
+
+    Parses `adhan_<prayer>_<muezzin>[_<maqam>].mp3` into:
+      * `<Maqam> | <Muezzin>` when a maqam segment is present
+      * `<Muezzin>` otherwise
+
+    Known muezzins and maqams are looked up in MUEZZIN_LABELS and MAQAM_LABELS
+    so we get proper Turkish orthography (e.g. "Recording 1", "Uşşak").
+    Unknown values fall back to camelCase-to-Title-Case conversion.
+
+    Filenames that don't match the adhan pattern (e.g. `iqamah_bell.mp3`)
+    fall back to a cleaned-up stem.
+    """
+    stem = filename
+    if stem.endswith(".mp3"):
+        stem = stem[:-4]
+    parts = stem.split("_")
+    # adhan_<prayer>_<muezzin>[_<maqam>]
+    if len(parts) >= 3 and parts[0] == "adhan":
+        muezzin_slug = parts[2]
+        muezzin = MUEZZIN_LABELS.get(muezzin_slug, _camel_to_title(muezzin_slug))
+        if len(parts) >= 4 and parts[3]:
+            maqam_slug = parts[3]
+            maqam = MAQAM_LABELS.get(maqam_slug, _camel_to_title(maqam_slug))
+            return f"{maqam} | {muezzin}"
+        return muezzin
+    # Fallback: replace underscores with spaces and title-case each word
+    return " ".join(_camel_to_title(p) for p in parts if p)
+
+
+def _build_audio_file_list() -> list[dict]:
+    """Scan AUDIO_DIR and return a sorted list of {filename, label} dicts."""
+    if not AUDIO_DIR.exists():
+        return []
+    entries = [
+        {"filename": f.name, "label": audio_display_label(f.name)}
+        for f in AUDIO_DIR.iterdir()
+        if f.suffix == ".mp3"
+    ]
+    # Sort by label so the dropdowns are alphabetised by human-readable name
+    entries.sort(key=lambda e: (e["label"].lower(), e["filename"]))
+    return entries
+
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
@@ -192,11 +270,7 @@ def dashboard():
                 next_prayer = {"name": prayer, "iso": pt.isoformat()}
                 break
 
-    audio_files = []
-    if AUDIO_DIR.exists():
-        audio_files = sorted(
-            f.name for f in AUDIO_DIR.iterdir() if f.suffix == ".mp3"
-        )
+    audio_files = _build_audio_file_list()
 
     return render_template(
         "dashboard.html",
@@ -554,6 +628,12 @@ def api_wifi_status():
                     "connection": parts[3],
                 })
         return jsonify({"state": "unknown"})
+    except FileNotFoundError:
+        # nmcli is on the host, not in this container. WiFi management from
+        # the dashboard requires NetworkManager + dbus access which is not
+        # wired up yet. Fall back to a friendly message; users can still
+        # change networks via SSH.
+        return jsonify({"error": "WiFi management not available in container. Use SSH: sudo nmcli device wifi list"}), 503
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
