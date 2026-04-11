@@ -4,7 +4,7 @@
 #
 # Usage (from a fresh Pi SSH session):
 #
-#   export GH_PAT=ghp_xxx              # fine-grained PAT: Contents:Read + Packages:Read
+#   export GH_PAT=ghp_xxx              # classic PAT: repo + read:packages scopes
 #   export TAILSCALE_AUTHKEY=tskey-... # reusable auth key tagged tag:bilal-fleet
 #   curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
 #
@@ -94,10 +94,10 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 else
     if [ -z "${GH_PAT:-}" ]; then
         err "GH_PAT not set and no existing install at $INSTALL_DIR."
-        err "  The $REPO_OWNER/$REPO_NAME repo is private. Create a fine-grained PAT at"
-        err "  https://github.com/settings/personal-access-tokens/new with"
-        err "  'Contents: Read' and 'Packages: Read' scoped to $REPO_OWNER/$REPO_NAME,"
-        err "  then: export GH_PAT=ghp_... and re-run."
+        err "  The $REPO_OWNER/$REPO_NAME repo is private. Create a classic PAT at"
+        err "  https://github.com/settings/tokens (Generate new token -> classic) with"
+        err "  'repo' and 'read:packages' scopes, then: export GH_PAT=ghp_... and re-run."
+        err "  (Fine-grained tokens don't support ghcr.io container-registry auth yet.)"
         exit 1
     fi
     log "Cloning $REPO_OWNER/$REPO_NAME into $INSTALL_DIR..."

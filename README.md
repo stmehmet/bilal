@@ -53,7 +53,7 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 
 Two env vars drive the installer:
 
-- `GH_PAT` — a GitHub fine-grained personal access token with **Contents: Read** and **Packages: Read** scoped to `stmehmet/bilal`. Required because the repo and GHCR packages are private. Create one at https://github.com/settings/personal-access-tokens/new.
+- `GH_PAT` — a GitHub **classic** personal access token with `repo` + `read:packages` scopes. Required because the repo and GHCR packages are private. Create one at https://github.com/settings/tokens (click **Generate new token → Generate new token (classic)**). Fine-grained tokens don't support `ghcr.io` container-registry auth yet, so we need a classic one.
 - `TAILSCALE_AUTHKEY` — a Tailscale reusable auth key (tagged `tag:bilal-fleet`). Optional but strongly recommended: without it you have no way to SSH into the Pi remotely once it leaves your hands. Create one at https://login.tailscale.com/admin/settings/keys.
 
 From a fresh Pi SSH session:
@@ -94,7 +94,7 @@ The end-to-end recipe for assembling a unit to hand off to a family member:
    - Your own public SSH key (optional — Tailscale SSH is the primary remote path)
    - Locale + timezone
 2. **Mint credentials once** on your workstation:
-   - `GH_PAT` — fine-grained PAT with `Contents: Read` + `Packages: Read` scoped to `stmehmet/bilal`
+   - `GH_PAT` — **classic** PAT with `repo` + `read:packages` scopes (fine-grained tokens don't support `ghcr.io` yet)
    - `TAILSCALE_AUTHKEY` — reusable, pre-authorized auth key tagged `tag:bilal-fleet` (one key works for the whole fleet)
 3. **Boot the Pi** and either:
    - Plug it into ethernet, or
@@ -164,7 +164,7 @@ The included workflow (`.github/workflows/build-push.yml`) builds multi-arch ima
 
 If the repo is private, GHCR packages are private by default. Authenticate the Pi once so Docker (and Watchtower) can pull:
 
-1. Create a GitHub fine-grained personal access token with **Contents: Read** + **Packages: Read** scoped to this repo.
+1. Create a GitHub **classic** personal access token with `repo` + `read:packages` scopes at https://github.com/settings/tokens (fine-grained tokens don't support `ghcr.io` container-registry auth).
 2. On the Pi:
    ```bash
    echo <PAT> | docker login ghcr.io -u stmehmet --password-stdin
