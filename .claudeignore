@@ -1,0 +1,62 @@
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+
+# Runtime state — contains passwords, tokens, prayer config
+*.db
+*.sqlite3
+config.json
+auth.json
+.config_changed
+
+# Environment files — may contain SECRET_KEY, PATs, auth keys
+.env
+.env.local
+.env.*.local
+.bilal-install.env
+# Keep .env.example readable so Claude can see required env vars
+
+# Credentials and key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+credentials.json
+credentials*.json
+*-credentials.json
+.tailscale.authkey
+.tailscale-authkey
+
+# Firebase / Google Cloud
+google-services.json
+GoogleService-Info.plist
+*-service-account*.json
+serviceAccountKey.json
+.firebase/
+
+# Large / binary assets — Claude cannot usefully read these
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.mp4
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.ttf
+*.otf
+*.woff
+*.woff2

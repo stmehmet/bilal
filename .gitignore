@@ -1,7 +1,5 @@
 __pycache__/
 *.pyc
-.env
-!audio/.gitkeep
 .venv/
 *.egg-info/
 dist/
@@ -9,8 +7,40 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.DS_Store
+
+# Audio
+!audio/.gitkeep
+
+# Runtime state (contains passwords, tokens, prayer config)
 *.db
 *.sqlite3
 config.json
 auth.json
 .config_changed
+
+# Environment files — may contain SECRET_KEY, PATs, auth keys
+.env
+.env.local
+.env.*.local
+.bilal-install.env
+!.env.example
+
+# Credentials and key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.mobileprovision
+credentials.json
+credentials*.json
+*-credentials.json
+.tailscale.authkey
+.tailscale-authkey
+
+# Firebase / Google Cloud (relevant once firebase_client.py is wired up)
+google-services.json
+GoogleService-Info.plist
+*-service-account*.json
+serviceAccountKey.json
+.firebase/
