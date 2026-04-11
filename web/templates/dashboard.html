@@ -5,22 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bilal – Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
+    /* Keep phosphor icons visually aligned with their adjacent text */
+    .ph, [class^="ph-"], [class*=" ph-"] { display: inline-block; vertical-align: -0.125em; }
+    /* Arabic-calligraphic Latin font for the brand title */
+    .font-brand { font-family: 'Aref Ruqaa', serif; letter-spacing: 0.02em; }
   </style>
 </head>
 <body class="text-slate-200 p-4 md:p-8">
 
   <!-- Header -->
   <header class="max-w-4xl mx-auto flex items-center justify-between mb-8">
-    <div>
-      <h1 class="text-3xl font-bold text-emerald-400">Bilal</h1>
-      <p class="text-slate-400 text-sm">
-        {{ config.city }}, {{ config.country }}
-        <span class="text-slate-500 ml-2">{{ config.timezone }}</span>
-      </p>
+    <div class="flex items-center gap-3">
+      <img src="data:image/png;base64,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"
+           alt="Minaret" width="48" height="48"
+           class="w-12 h-12 flex-shrink-0">
+      <div>
+        <h1 class="font-brand text-4xl font-bold text-emerald-400 leading-none">Bilal</h1>
+        <p class="text-slate-400 text-sm">
+          {{ config.city }}, {{ config.country }}
+          <span class="text-slate-500 ml-2">{{ config.timezone }}</span>
+        </p>
+      </div>
     </div>
-    <a href="/logout" class="text-slate-400 hover:text-white text-sm">Logout</a>
+    <a href="/logout" class="text-slate-400 hover:text-white text-sm inline-flex items-center gap-1.5">
+      <i class="ph ph-sign-out"></i> Logout
+    </a>
   </header>
 
   <main class="max-w-4xl mx-auto space-y-6">
@@ -28,7 +41,7 @@
     <!-- Audio Warning Banner (populated by JS) -->
     <div id="audio-warning" class="hidden bg-amber-900/60 border border-amber-700 rounded-2xl shadow-lg p-4">
       <div class="flex items-start gap-3">
-        <span class="text-amber-400 text-xl mt-0.5">&#9888;</span>
+        <i class="ph ph-warning-circle text-amber-400 text-2xl mt-0.5"></i>
         <div>
           <h3 class="text-amber-300 font-medium text-sm">Missing Audio Files</h3>
           <p id="audio-warning-text" class="text-amber-200/80 text-sm mt-1"></p>
@@ -39,9 +52,12 @@
     <!-- Next Prayer Countdown -->
     {% if next_prayer %}
     <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
-      <div>
-        <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Next Prayer</div>
-        <div class="text-2xl font-bold text-white">{{ next_prayer.name }}</div>
+      <div class="flex items-center gap-4">
+        <i class="ph ph-moon-stars text-emerald-400 text-4xl"></i>
+        <div>
+          <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Next Prayer</div>
+          <div class="text-2xl font-bold text-white">{{ next_prayer.name }}</div>
+        </div>
       </div>
       <div class="text-right">
         <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Starts in</div>
@@ -52,7 +68,9 @@
 
     <!-- Prayer Times + Iqamah -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Today's Prayer Times</h2>
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
+        <i class="ph ph-clock-countdown"></i> Today's Prayer Times
+      </h2>
       {% if prayer_times %}
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -68,7 +86,9 @@
             {# Sunrise row (display only, not a prayer) #}
             {% if prayer_times.get('Sunrise') %}
             <tr class="border-b border-slate-700/50">
-              <td class="py-3 font-medium text-amber-400">🌅 Sunrise</td>
+              <td class="py-3 font-medium text-amber-400">
+                <i class="ph ph-sun-horizon mr-1"></i> Sunrise
+              </td>
               <td class="text-center text-amber-300 font-mono">{{ prayer_times.Sunrise }}</td>
               <td class="text-center text-slate-600">—</td>
               <td class="text-center text-slate-600">—</td>
@@ -102,7 +122,9 @@
 
     <!-- Settings -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4">Settings</h2>
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
+        <i class="ph ph-sliders-horizontal"></i> Settings
+      </h2>
       <div class="grid md:grid-cols-2 gap-4">
 
         <!-- Location -->
@@ -119,8 +141,8 @@
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
           </div>
           <button onclick="detectLocation()" id="detect-btn"
-                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300">
-            Auto-detect from IP
+                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5">
+            <i class="ph ph-crosshair-simple"></i> Auto-detect from IP
           </button>
         </div>
 
@@ -145,8 +167,8 @@
               <div class="flex items-center justify-between mb-1">
                 <span class="text-xs uppercase tracking-wider text-slate-400">{{ name }}</span>
                 <button type="button" onclick="previewAdhan('{{ name }}')"
-                        class="text-xs text-emerald-400 hover:text-emerald-300">
-                  Preview
+                        class="text-xs text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1">
+                  <i class="ph ph-play-circle"></i> Preview
                 </button>
               </div>
               <select id="adhan-file-{{ name }}" data-prayer="{{ name }}"
@@ -189,9 +211,10 @@
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
             <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
                     class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
-                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed
+                           inline-flex items-center gap-1.5"
                     title="Enter a token first to browse devices">
-              Browse
+              <i class="ph ph-list-magnifying-glass"></i> Browse
             </button>
           </div>
           <select id="st-device-select" onchange="selectSmartThingsDevice()"
@@ -203,8 +226,8 @@
 
       <button onclick="saveSettings()"
               class="mt-6 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors">
-        Save Settings
+                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
+        <i class="ph ph-floppy-disk"></i> Save Settings
       </button>
     </section>
 
@@ -212,7 +235,9 @@
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-semibold text-emerald-400">Iqamah Offsets</h2>
+          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+            <i class="ph ph-plus-minus"></i> Iqamah Offsets
+          </h2>
           <p class="text-slate-400 text-sm mt-1">Minutes after Adhan before Iqamah is called.</p>
         </div>
       </div>
@@ -246,8 +271,8 @@
       </div>
       <button onclick="saveIqamah()"
               class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
-                     rounded-lg transition-colors">
-        Save Iqamah Offsets
+                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
+        <i class="ph ph-floppy-disk"></i> Save Iqamah Offsets
       </button>
     </section>
 
@@ -255,7 +280,9 @@
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-semibold text-emerald-400">Do Not Disturb</h2>
+          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+            <i class="ph ph-moon"></i> Do Not Disturb
+          </h2>
           <p class="text-slate-400 text-sm mt-1">Mute the Adhan during sleep hours.</p>
         </div>
         <label class="relative inline-flex items-center cursor-pointer">
@@ -284,18 +311,21 @@
       </div>
       <button onclick="saveDND()"
               class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
-                     rounded-lg transition-colors">
-        Save DND Schedule
+                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
+        <i class="ph ph-floppy-disk"></i> Save DND Schedule
       </button>
     </section>
 
     <!-- Speakers -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold text-emerald-400">Speakers</h2>
+        <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+          <i class="ph ph-speaker-high"></i> Speakers
+        </h2>
         <button onclick="discoverSpeakers()" id="discover-btn"
-                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors">
-          Discover Speakers
+                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors
+                       inline-flex items-center gap-1.5">
+          <i class="ph ph-magnifying-glass"></i> Discover Speakers
         </button>
       </div>
       <div id="speakers-list">
@@ -318,8 +348,8 @@
           </label>
           <button onclick="testSpeaker('{{ name }}')"
                   class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
-                         px-3 py-1 rounded-lg transition-colors">
-            Test
+                         px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
+            <i class="ph ph-play"></i> Test
           </button>
         </div>
         {% endfor %}
@@ -333,12 +363,15 @@
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="text-xl font-semibold text-emerald-400">WiFi</h2>
+          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+            <i class="ph ph-wifi-high"></i> WiFi
+          </h2>
           <p id="wifi-status" class="text-slate-400 text-sm mt-1">Loading...</p>
         </div>
         <button onclick="scanWifi()" id="wifi-scan-btn"
-                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors">
-          Scan Networks
+                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors
+                       inline-flex items-center gap-1.5">
+          <i class="ph ph-magnifying-glass"></i> Scan Networks
         </button>
       </div>
 
@@ -358,8 +391,9 @@
                  class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
           <button onclick="connectWifi(document.getElementById('wifi-ssid').value, document.getElementById('wifi-password').value)"
-                  class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
-            Connect
+                  class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap
+                         inline-flex items-center gap-1.5">
+            <i class="ph ph-link"></i> Connect
           </button>
         </div>
       </details>
