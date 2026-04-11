@@ -262,6 +262,117 @@ class TestAudio:
 
 
 # ---------------------------------------------------------------------------
+# Location: address-based geocoding
+# ---------------------------------------------------------------------------
+
+class TestGeocode:
+    """The /api/geocode endpoint resolves an address via Nominatim and then
+    looks up the timezone via timeapi.io. Both external calls are mocked."""
+
+    def test_geocode_empty_address_returns_400(self, logged_in_client):
+        resp = logged_in_client.post("/api/geocode", json={"address": "   "})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_geocode_long_address_returns_400(self, logged_in_client):
+        resp = logged_in_client.post("/api/geocode", json={"address": "a" * 500})
+        assert resp.status_code == 400
+
+    @patch("geolocation.requests.get")
+    def test_geocode_success_returns_location(self, mock_get, logged_in_client):
+        # First call: Nominatim returns a forward-geocoding hit
+        nominatim_resp = MagicMock()
+        nominatim_resp.raise_for_status = MagicMock()
+        nominatim_resp.json.return_value = [{
+            "lat": "30.2672",
+            "lon": "-97.7431",
+            "display_name": "Austin, Texas, United States",
+            "address": {
+                "city": "Austin",
+                "state": "Texas",
+                "country": "United States",
+                "country_code": "us",
+            },
+        }]
+        # Second call: timeapi.io returns the IANA timezone
+        tz_resp = MagicMock()
+        tz_resp.raise_for_status = MagicMock()
+        tz_resp.json.return_value = {"timeZone": "America/Chicago"}
+
+        mock_get.side_effect = [nominatim_resp, tz_resp]
+
+        resp = logged_in_client.post("/api/geocode", json={"address": "Austin, TX"})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["latitude"] == 30.2672
+        assert data["longitude"] == -97.7431
+        assert data["city"] == "Austin"
+        assert data["country"] == "United States"
+        assert data["timezone"] == "America/Chicago"
+
+    @patch("geolocation.requests.get")
+    def test_geocode_not_found_returns_404(self, mock_get, logged_in_client):
+        # Nominatim returns an empty list for unknown addresses
+        nominatim_resp = MagicMock()
+        nominatim_resp.raise_for_status = MagicMock()
+        nominatim_resp.json.return_value = []
+        mock_get.return_value = nominatim_resp
+
+        resp = logged_in_client.post(
+            "/api/geocode", json={"address": "qwerqwerqwer nowhere"}
+        )
+        assert resp.status_code == 404
+        assert "error" in resp.get_json()
+
+    @patch("geolocation.requests.get")
+    def test_geocode_tz_lookup_failure_falls_back_to_utc(self, mock_get, logged_in_client):
+        # Nominatim succeeds but timeapi.io raises
+        import requests
+        nominatim_resp = MagicMock()
+        nominatim_resp.raise_for_status = MagicMock()
+        nominatim_resp.json.return_value = [{
+            "lat": "51.5074",
+            "lon": "-0.1278",
+            "address": {"city": "London", "country": "United Kingdom"},
+        }]
+        mock_get.side_effect = [
+            nominatim_resp,
+            requests.RequestException("timeapi down"),
+        ]
+
+        resp = logged_in_client.post("/api/geocode", json={"address": "London, UK"})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["timezone"] == "UTC"  # graceful fallback
+        assert data["city"] == "London"
+
+    @patch("geolocation.requests.get")
+    def test_geocode_falls_back_through_place_fields(self, mock_get, logged_in_client):
+        # Nominatim returns a result for a village (no 'city' key). The
+        # endpoint should fall through to 'town' / 'village' / etc.
+        nominatim_resp = MagicMock()
+        nominatim_resp.raise_for_status = MagicMock()
+        nominatim_resp.json.return_value = [{
+            "lat": "42.1",
+            "lon": "-71.2",
+            "address": {
+                "village": "Smallville",
+                "county": "Somewhere County",
+                "country": "United States",
+            },
+        }]
+        tz_resp = MagicMock()
+        tz_resp.raise_for_status = MagicMock()
+        tz_resp.json.return_value = {"timeZone": "America/New_York"}
+        mock_get.side_effect = [nominatim_resp, tz_resp]
+
+        resp = logged_in_client.post("/api/geocode", json={"address": "Smallville"})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["city"] == "Smallville"
+
+
+# ---------------------------------------------------------------------------
 # Audio file display label parser
 # ---------------------------------------------------------------------------
 
@@ -285,10 +396,71 @@ class TestAudioDisplayLabel:
         ("adhan_fajr_abdulbasit.mp3",             "Abdulbasit"),
         # Unknown muezzin + unknown maqam — both fall back
         ("adhan_fajr_someone_unknownMaqam.mp3",   "Unknown Maqam | Someone"),
-        # Non-adhan filename (e.g. iqamah) — cleaned-up stem
-        ("iqamah_bell.mp3",                        "Iqamah Bell"),
+        # iqamah files — known muezzin uses Turkish label table
+        ("iqamah_rec1.mp3",                 "Recording 1"),
+        ("iqamah_rec2.mp3",              "Recording 2"),
+        ("iqamah_bell.mp3",                        "Bell"),
+        # Totally unrecognised filename — cleaned-up stem
         ("bells.mp3",                              "Bells"),
     ])
     def test_label_parsing(self, filename, expected):
         from app import audio_display_label
         assert audio_display_label(filename) == expected
+
+    @pytest.mark.parametrize("filename,category,prayer", [
+        ("adhan_fajr_rec1_saba.mp3",     "adhan",  "fajr"),
+        ("adhan_dhuhr_rec2_ussak.mp3","adhan",  "dhuhr"),
+        ("adhan_isha_rec1_hicaz.mp3",    "adhan",  "isha"),
+        ("iqamah_bell.mp3",                     "iqamah", None),
+        ("iqamah_rec1.mp3",              "iqamah", None),
+        ("bells.mp3",                           "other",  None),
+        ("adhan_fajr.mp3",                      "adhan",  "fajr"),  # missing muezzin still classified by prayer
+        ("adhan_notaprayer_someone.mp3",        "other",  None),
+    ])
+    def test_audio_file_category(self, filename, category, prayer):
+        from app import _audio_file_category
+        assert _audio_file_category(filename) == (category, prayer)
+
+
+class TestAudioFileFiltering:
+    """End-to-end: per-prayer adhan and iqamah dropdown builders filter
+    correctly from the real AUDIO_DIR contents."""
+
+    def test_audio_files_by_prayer_splits_correctly(self, tmp_path, monkeypatch):
+        # Seed a fake AUDIO_DIR with one file per prayer per muezzin
+        audio_dir = tmp_path / "audio"
+        audio_dir.mkdir()
+        for name in [
+            "adhan_fajr_rec1_saba.mp3",
+            "adhan_fajr_rec2_saba.mp3",
+            "adhan_dhuhr_rec1_ussak.mp3",
+            "adhan_asr_rec2_rast.mp3",
+            "adhan_maghrib_rec1_segah.mp3",
+            "adhan_isha_rec2_hicaz.mp3",
+            "iqamah_bell.mp3",
+            "random_noise.mp3",
+        ]:
+            (audio_dir / name).write_bytes(b"\x00")
+
+        import app as web_app
+        monkeypatch.setattr(web_app, "AUDIO_DIR", audio_dir)
+
+        by_prayer = web_app._build_audio_files_by_prayer()
+
+        # Fajr has both muezzins in Saba
+        fajr_filenames = [e["filename"] for e in by_prayer["Fajr"]]
+        assert "adhan_fajr_rec1_saba.mp3" in fajr_filenames
+        assert "adhan_fajr_rec2_saba.mp3" in fajr_filenames
+        assert len(fajr_filenames) == 2
+
+        # Dhuhr has only Recording 1 in Uşşak; Asr only Recording 2
+        assert len(by_prayer["Dhuhr"]) == 1
+        assert "ussak" in by_prayer["Dhuhr"][0]["filename"]
+        assert len(by_prayer["Asr"]) == 1
+        assert "rast" in by_prayer["Asr"][0]["filename"]
+
+        # iqamah and random_noise are NOT in any per-prayer bucket
+        all_in_buckets = {e["filename"] for p in by_prayer.values() for e in p}
+        assert "iqamah_bell.mp3" not in all_in_buckets
+        assert "random_noise.mp3" not in all_in_buckets
+

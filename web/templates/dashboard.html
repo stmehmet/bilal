@@ -132,6 +132,8 @@
         <!-- Location -->
         <div>
           <label class="block text-slate-400 text-sm mb-1">Location</label>
+
+          <!-- Current coordinates (source of truth for prayer calculation) -->
           <div class="flex gap-2">
             <input id="lat" type="number" step="any" placeholder="Latitude"
                    value="{{ config.latitude or '' }}"
@@ -142,10 +144,36 @@
                    class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
           </div>
-          <button onclick="detectLocation()" id="detect-btn"
+
+          <!-- Primary action: IP-based auto-detect -->
+          <button type="button" onclick="detectLocation()" id="detect-btn"
                   class="mt-2 text-sm text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5">
             <i class="ph ph-crosshair-simple"></i> Auto-detect from IP
           </button>
+
+          <!-- Fallback: address lookup when IP detection is wrong
+               (VPN, Tailscale exit node, or ISP geolocating to another city) -->
+          <details class="mt-3">
+            <summary class="text-sm text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
+              <i class="ph ph-magnifying-glass"></i>
+              Wrong location? Look up by address
+            </summary>
+            <div class="mt-2">
+              <div class="flex gap-2">
+                <input id="address" type="text" placeholder="e.g. Austin, TX or 123 Main St, Dallas"
+                       class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                              text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();geocodeAddress();}">
+                <button type="button" onclick="geocodeAddress()" id="geocode-btn"
+                        class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-4 py-2 rounded-lg
+                               transition-colors whitespace-nowrap inline-flex items-center gap-1.5
+                               disabled:opacity-50 disabled:cursor-not-allowed">
+                  Look Up
+                </button>
+              </div>
+              <p id="geocode-status" class="text-xs text-slate-500 mt-1"></p>
+            </div>
+          </details>
         </div>
 
         <!-- Calculation Method -->
@@ -176,9 +204,13 @@
               <select id="adhan-file-{{ name }}" data-prayer="{{ name }}"
                       class="adhan-audio-select w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                              text-white outline-none focus:ring-2 focus:ring-emerald-500">
-                {% for f in audio_files %}
-                <option value="{{ f.filename }}" {% if f.filename == config.adhan_audio_files.get(name) %}selected{% endif %}>{{ f.label }}</option>
-                {% endfor %}
+                {% if audio_files_by_prayer[name] %}
+                  {% for f in audio_files_by_prayer[name] %}
+                  <option value="{{ f.filename }}" {% if f.filename == config.adhan_audio_files.get(name) %}selected{% endif %}>{{ f.label }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="" disabled selected>(No audio files for {{ name }})</option>
+                {% endif %}
               </select>
             </div>
             {% endfor %}
@@ -565,6 +597,63 @@
         toast(`Detected: ${data.city}, ${data.country}`);
       } else toast('Detection failed', true);
       btn.textContent = 'Auto-detect from IP';
+    }
+
+    // Set the geocode status line with a Phosphor icon + plain-text message.
+    // Uses textContent/createElement to avoid any XSS risk from Nominatim data.
+    function setGeocodeStatus(iconClass, colorClass, message) {
+      const el = document.getElementById('geocode-status');
+      el.className = `text-xs ${colorClass} mt-1`;
+      el.replaceChildren();
+      const icon = document.createElement('i');
+      icon.className = `ph ${iconClass} mr-1`;
+      const text = document.createTextNode(message);
+      el.appendChild(icon);
+      el.appendChild(text);
+    }
+
+    async function geocodeAddress() {
+      const input = document.getElementById('address');
+      const btn = document.getElementById('geocode-btn');
+      const address = input.value.trim();
+      if (!address) {
+        setGeocodeStatus('ph-info', 'text-amber-400', 'Enter an address first.');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Looking up...';
+      setGeocodeStatus('ph-spinner', 'text-slate-400', 'Contacting OpenStreetMap...');
+      try {
+        const resp = await fetch('/api/geocode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          // Populate the coordinate fields (inside the collapsed details block)
+          document.getElementById('lat').value = data.latitude;
+          document.getElementById('lon').value = data.longitude;
+          const summary = `${data.city}, ${data.country} — ${data.timezone} ` +
+            `(${Number(data.latitude).toFixed(4)}, ${Number(data.longitude).toFixed(4)})`;
+          setGeocodeStatus('ph-check-circle', 'text-emerald-400', summary);
+          toast(`Found: ${data.city}, ${data.country}`);
+        } else {
+          const msg = data.error || 'Lookup failed';
+          setGeocodeStatus('ph-warning-circle', 'text-red-400', msg);
+          toast(msg, true);
+        }
+      } catch (err) {
+        setGeocodeStatus(
+          'ph-warning-circle',
+          'text-red-400',
+          'Network error. Try again or enter coordinates manually.'
+        );
+        toast('Network error', true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Look Up';
+      }
     }
 
     // ── Speakers ──────────────────────────────────────────────────────────────

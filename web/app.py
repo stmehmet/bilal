@@ -41,7 +41,7 @@ from config import (  # noqa: E402
     save_config,
 )
 from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
-from geolocation import detect_location  # noqa: E402
+from geolocation import detect_location, geocode_address  # noqa: E402
 from smartthings import list_devices as st_list_devices  # noqa: E402
 from adhan_scheduler import compute_prayer_times, compute_iqamah_times, validate_audio_files  # noqa: E402
 
@@ -92,21 +92,25 @@ def _camel_to_title(s: str) -> str:
 def audio_display_label(filename: str) -> str:
     """Return a human-readable label for an audio file.
 
-    Parses `adhan_<prayer>_<muezzin>[_<maqam>].mp3` into:
-      * `<Maqam> | <Muezzin>` when a maqam segment is present
-      * `<Muezzin>` otherwise
+    Supported patterns:
+
+      * `adhan_<prayer>_<muezzin>[_<maqam>].mp3`
+          -> "<Maqam> | <Muezzin>" or "<Muezzin>"
+      * `iqamah_<name>.mp3`
+          -> "<Name>"  (e.g. "Recording 1", "Bell")
 
     Known muezzins and maqams are looked up in MUEZZIN_LABELS and MAQAM_LABELS
     so we get proper Turkish orthography (e.g. "Recording 1", "Uşşak").
     Unknown values fall back to camelCase-to-Title-Case conversion.
 
-    Filenames that don't match the adhan pattern (e.g. `iqamah_bell.mp3`)
-    fall back to a cleaned-up stem.
+    Filenames that don't match either pattern fall back to a cleaned-up stem
+    (underscores -> spaces, each segment title-cased).
     """
     stem = filename
     if stem.endswith(".mp3"):
         stem = stem[:-4]
     parts = stem.split("_")
+
     # adhan_<prayer>_<muezzin>[_<maqam>]
     if len(parts) >= 3 and parts[0] == "adhan":
         muezzin_slug = parts[2]
@@ -116,8 +120,35 @@ def audio_display_label(filename: str) -> str:
             maqam = MAQAM_LABELS.get(maqam_slug, _camel_to_title(maqam_slug))
             return f"{maqam} | {muezzin}"
         return muezzin
+
+    # iqamah_<name>  (e.g. iqamah_bell, iqamah_rec1)
+    if len(parts) >= 2 and parts[0] == "iqamah":
+        name_slug = parts[1]
+        return MUEZZIN_LABELS.get(name_slug, _camel_to_title(name_slug))
+
     # Fallback: replace underscores with spaces and title-case each word
     return " ".join(_camel_to_title(p) for p in parts if p)
+
+
+# Valid prayer slugs (lowercase) used in filenames and filtering.
+_PRAYER_SLUGS = {"fajr", "dhuhr", "asr", "maghrib", "isha"}
+
+
+def _audio_file_category(filename: str) -> tuple[str, str | None]:
+    """Classify an audio filename.
+
+    Returns one of:
+      * ("adhan", "<prayer>") — e.g. ("adhan", "fajr") for a per-prayer adhan
+      * ("iqamah", None)      — iqamah_<name>.mp3
+      * ("other", None)       — anything else
+    """
+    stem = filename[:-4] if filename.endswith(".mp3") else filename
+    parts = stem.split("_")
+    if len(parts) >= 2 and parts[0] == "adhan" and parts[1] in _PRAYER_SLUGS:
+        return ("adhan", parts[1])
+    if len(parts) >= 2 and parts[0] == "iqamah":
+        return ("iqamah", None)
+    return ("other", None)
 
 
 def _build_audio_file_list() -> list[dict]:
@@ -132,6 +163,43 @@ def _build_audio_file_list() -> list[dict]:
     # Sort by label so the dropdowns are alphabetised by human-readable name
     entries.sort(key=lambda e: (e["label"].lower(), e["filename"]))
     return entries
+
+
+def _build_audio_files_by_prayer() -> dict[str, list[dict]]:
+    """Return per-prayer adhan dropdown options.
+
+    Each prayer (Fajr, Dhuhr, Asr, Maghrib, Isha) gets a list of
+    {filename, label} entries for the adhan files whose filename prayer
+    segment matches. This drives the per-prayer dropdowns so Fajr only
+    shows Saba maqam recitations, Dhuhr only shows Uşşak, etc.
+
+    Prayers with no matching files get an empty list; the template shows
+    a "(no audio files)" placeholder option in that case.
+    """
+    result: dict[str, list[dict]] = {
+        "Fajr": [], "Dhuhr": [], "Asr": [], "Maghrib": [], "Isha": [],
+    }
+    if not AUDIO_DIR.exists():
+        return result
+    slug_to_prayer = {
+        "fajr": "Fajr", "dhuhr": "Dhuhr", "asr": "Asr",
+        "maghrib": "Maghrib", "isha": "Isha",
+    }
+    for f in AUDIO_DIR.iterdir():
+        if f.suffix != ".mp3":
+            continue
+        category, prayer_slug = _audio_file_category(f.name)
+        if category != "adhan" or prayer_slug is None:
+            continue
+        prayer = slug_to_prayer[prayer_slug]
+        result[prayer].append(
+            {"filename": f.name, "label": audio_display_label(f.name)}
+        )
+    for prayer in result:
+        result[prayer].sort(key=lambda e: (e["label"].lower(), e["filename"]))
+    return result
+
+
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -271,6 +339,7 @@ def dashboard():
                 break
 
     audio_files = _build_audio_file_list()
+    audio_files_by_prayer = _build_audio_files_by_prayer()
 
     return render_template(
         "dashboard.html",
@@ -280,6 +349,7 @@ def dashboard():
         prayer_names=PRAYER_NAMES,
         methods=CALCULATION_METHODS,
         audio_files=audio_files,
+        audio_files_by_prayer=audio_files_by_prayer,
         next_prayer=next_prayer,
     )
 
@@ -442,6 +512,31 @@ def api_detect_location():
         save_config(config)
         return jsonify(loc)
     return jsonify({"error": "Location detection failed"}), 500
+
+
+@app.route("/api/geocode", methods=["POST"])
+@login_required
+def api_geocode():
+    """Look up a street address or place name via OpenStreetMap Nominatim.
+
+    Does NOT persist the result to config — the client populates the form
+    fields so the user can review and click Save Settings themselves.
+    """
+    data = request.get_json(silent=True) or {}
+    address = (data.get("address") or "").strip()
+    if not address:
+        return jsonify({"error": "Address is required"}), 400
+    if len(address) > 200:
+        return jsonify({"error": "Address is too long"}), 400
+    loc = geocode_address(address)
+    if loc is None:
+        return jsonify({
+            "error": (
+                "Could not find that address. "
+                "Try a simpler form like 'Austin, TX' or enter coordinates manually."
+            )
+        }), 404
+    return jsonify(loc)
 
 
 @app.route("/api/discover-speakers", methods=["POST"])
