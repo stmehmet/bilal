@@ -51,31 +51,72 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 
 ### Installation
 
+Two env vars drive the installer:
+
+- `GH_PAT` — a GitHub fine-grained personal access token with **Contents: Read** and **Packages: Read** scoped to `stmehmet/bilal`. Required because the repo and GHCR packages are private. Create one at https://github.com/settings/personal-access-tokens/new.
+- `TAILSCALE_AUTHKEY` — a Tailscale reusable auth key (tagged `tag:bilal-fleet`). Optional but strongly recommended: without it you have no way to SSH into the Pi remotely once it leaves your hands. Create one at https://login.tailscale.com/admin/settings/keys.
+
+From a fresh Pi SSH session:
+
 ```bash
-# Clone the repository
-git clone https://github.com/stmehmet/bilal.git
-cd bilal
-
-# Add your adhan audio files
-cp /path/to/adhan_makkah.mp3 audio/
-cp /path/to/adhan_fajr.mp3 audio/
-
-# Generate a secret key
-echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
-
-# Build and start
-docker compose up -d --build
+export GH_PAT=ghp_xxx
+export TAILSCALE_AUTHKEY=tskey-auth-xxx
+curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
 ```
 
-Or use the one-line installer:
+The installer will:
+
+1. Install Docker + Compose plugin
+2. Install Tailscale and join the tailnet (with `--ssh` so you don't need to manage OpenSSH keys separately)
+3. Clone the repo to `~/bilal`
+4. Log in to `ghcr.io` so `docker compose pull` and Watchtower can fetch private images
+5. Generate a `.env` with a random `SECRET_KEY`
+6. `docker compose pull && docker compose up -d`
+
+If you've already cloned the repo manually, you can skip the one-liner and just run it from inside the repo:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
+cd ~/bilal
+TAILSCALE_AUTHKEY=tskey-auth-xxx ./scripts/install.sh
 ```
 
 ### Access the Dashboard
 
 Open `http://<pi-ip-address>:5000` in your browser. On first visit, you'll be asked to create a password.
+
+## Gifting a Pi
+
+The end-to-end recipe for assembling a unit to hand off to a family member:
+
+1. **Flash the SD card** with Raspberry Pi OS 64-bit Lite using Raspberry Pi Imager. In advanced options, preconfigure:
+   - Hostname: `bilal-<name>` (e.g. `bilal-inlaws`)
+   - Username / password
+   - Your own public SSH key (optional — Tailscale SSH is the primary remote path)
+   - Locale + timezone
+2. **Mint credentials once** on your workstation:
+   - `GH_PAT` — fine-grained PAT with `Contents: Read` + `Packages: Read` scoped to `stmehmet/bilal`
+   - `TAILSCALE_AUTHKEY` — reusable, pre-authorized auth key tagged `tag:bilal-fleet` (one key works for the whole fleet)
+3. **Boot the Pi** and either:
+   - Plug it into ethernet, or
+   - Let the captive portal come up: connect your phone to the `Bilal-Setup` hotspot (password `bilal1234`), open `http://192.168.4.1:5000`, and enter the recipient's WiFi credentials.
+4. **SSH in and run the installer**:
+   ```bash
+   ssh <user>@bilal-<name>.local
+   export GH_PAT=ghp_xxx
+   export TAILSCALE_AUTHKEY=tskey-auth-xxx
+   curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
+   ```
+5. **Verify remote access** — the Pi should appear in your Tailscale admin at https://login.tailscale.com/admin/machines as `bilal-<machine-id-prefix>`. From your laptop, anywhere:
+   ```bash
+   tailscale ssh bilal-<machine-id-prefix>
+   ```
+   The dashboard is also reachable via MagicDNS: `http://bilal-<machine-id-prefix>:5000`.
+6. **Harden** (optional but recommended before gifting):
+   ```bash
+   sudo ~/bilal/scripts/harden.sh
+   ```
+   Tailscale SSH continues to work because it bypasses OpenSSH password auth entirely.
+7. **Hand it off.** Watchtower on the Pi pulls new images from GHCR within an hour of every merge to `main`, so you can ship fixes to the whole fleet without touching the hardware.
 
 ## Configuration
 
