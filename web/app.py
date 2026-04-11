@@ -443,15 +443,23 @@ def update_config():
             errors.append("Latitude and longitude must be numeric")
 
     if "timezone" in data:
-        if _validate_timezone(data["timezone"]):
-            config["timezone"] = data["timezone"]
-        else:
-            errors.append(f"Invalid timezone: {data['timezone']}")
+        tz_value = str(data["timezone"]).strip()
+        if tz_value:
+            if _validate_timezone(tz_value):
+                config["timezone"] = tz_value
+            else:
+                errors.append(f"Invalid timezone: {tz_value}")
+        # Empty string means "leave it alone" — the frontend sends "" when
+        # the user hasn't filled in the timezone field.
 
     if "city" in data:
-        config["city"] = str(data["city"])[:100]
+        city_value = str(data["city"]).strip()[:100]
+        if city_value:
+            config["city"] = city_value
     if "country" in data:
-        config["country"] = str(data["country"])[:100]
+        country_value = str(data["country"]).strip()[:100]
+        if country_value:
+            config["country"] = country_value
 
     # Iqamah offsets
     if "iqamah_offsets" in data:

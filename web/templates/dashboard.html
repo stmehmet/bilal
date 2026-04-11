@@ -133,7 +133,7 @@
         <div>
           <label class="block text-slate-400 text-sm mb-1">Location</label>
 
-          <!-- Current coordinates (source of truth for prayer calculation) -->
+          <!-- Coordinates (source of truth for prayer calculation) -->
           <div class="flex gap-2">
             <input id="lat" type="number" step="any" placeholder="Latitude"
                    value="{{ config.latitude or '' }}"
@@ -144,6 +144,23 @@
                    class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
           </div>
+
+          <!-- City + country + timezone (sent to backend on save so manual
+               coordinate edits don't leave stale display values) -->
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <input id="city" type="text" placeholder="City"
+                   value="{{ config.city if config.city and config.city != 'Unknown' else '' }}"
+                   class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            <input id="country" type="text" placeholder="Country"
+                   value="{{ config.country if config.country and config.country != 'Unknown' else '' }}"
+                   class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+          <input id="timezone" type="text" placeholder="Timezone (e.g. America/Chicago)"
+                 value="{{ config.timezone if config.timezone and config.timezone != 'UTC' else '' }}"
+                 class="mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
 
           <!-- Primary action: IP-based auto-detect -->
           <button type="button" onclick="detectLocation()" id="detect-btn"
@@ -520,6 +537,12 @@
       const body = {
         latitude: parseFloat(document.getElementById('lat').value) || null,
         longitude: parseFloat(document.getElementById('lon').value) || null,
+        // Send city/country/timezone so they stay in sync with the
+        // coordinates the user just edited. The backend only updates
+        // non-empty values — blank strings are allowed.
+        city: document.getElementById('city').value.trim(),
+        country: document.getElementById('country').value.trim(),
+        timezone: document.getElementById('timezone').value.trim(),
         calculation_method: document.getElementById('calc-method').value,
         adhan_audio_files: adhanAudioFiles,
         volume: parseInt(document.getElementById('volume').value) / 100,
@@ -586,14 +609,29 @@
     }
 
     // ── Location ──────────────────────────────────────────────────────────────
+    // Populate the four location fields (lat/lon/city/country/timezone)
+    // from a location dict returned by /api/detect-location or /api/geocode.
+    function applyLocation(data) {
+      document.getElementById('lat').value = data.latitude;
+      document.getElementById('lon').value = data.longitude;
+      if (data.city && data.city !== 'Unknown') {
+        document.getElementById('city').value = data.city;
+      }
+      if (data.country && data.country !== 'Unknown') {
+        document.getElementById('country').value = data.country;
+      }
+      if (data.timezone && data.timezone !== 'UTC') {
+        document.getElementById('timezone').value = data.timezone;
+      }
+    }
+
     async function detectLocation() {
       const btn = document.getElementById('detect-btn');
       btn.textContent = 'Detecting...';
       const resp = await fetch('/api/detect-location', { method: 'POST' });
       if (resp.ok) {
         const data = await resp.json();
-        document.getElementById('lat').value = data.latitude;
-        document.getElementById('lon').value = data.longitude;
+        applyLocation(data);
         toast(`Detected: ${data.city}, ${data.country}`);
       } else toast('Detection failed', true);
       btn.textContent = 'Auto-detect from IP';
@@ -631,9 +669,9 @@
         });
         const data = await resp.json();
         if (resp.ok) {
-          // Populate the coordinate fields (inside the collapsed details block)
-          document.getElementById('lat').value = data.latitude;
-          document.getElementById('lon').value = data.longitude;
+          // Populate lat/lon/city/country/timezone — the user reviews
+          // everything in the form fields before clicking Save Settings.
+          applyLocation(data);
           const summary = `${data.city}, ${data.country} — ${data.timezone} ` +
             `(${Number(data.latitude).toFixed(4)}, ${Number(data.longitude).toFixed(4)})`;
           setGeocodeStatus('ph-check-circle', 'text-emerald-400', summary);
