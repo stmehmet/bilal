@@ -11,7 +11,7 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 - **Captive Portal** – creates a WiFi hotspot if no network is found
 - **Mobile-responsive dashboard** (Flask + Tailwind CSS) with password protection
 - **Dockerized** with multi-arch CI/CD (ARM64 for Pi, AMD64 for dev)
-- **Auto-updates** via Watchtower pulling from Docker Hub
+- **Auto-updates** via Watchtower pulling from GitHub Container Registry (GHCR)
 - **Security hardened** – non-root containers, SSH lockdown, UFW firewall
 
 ## Architecture
@@ -31,7 +31,7 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 │                    │                               │
 │  ┌─────────────────┴──────────────────┐            │
 │  │         Watchtower                 │            │
-│  │   (auto-pull from Docker Hub)      │            │
+│  │      (auto-pull from GHCR)         │            │
 │  └────────────────────────────────────┘            │
 └────────────────────────────────────────────────────┘
          │                        │
@@ -53,7 +53,7 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/bilal.git
+git clone https://github.com/stmehmet/bilal.git
 cd bilal
 
 # Add your adhan audio files
@@ -70,7 +70,7 @@ docker compose up -d --build
 Or use the one-line installer:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/<your-username>/bilal/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
 ```
 
 ### Access the Dashboard
@@ -110,36 +110,27 @@ If the Pi can't connect to any known WiFi network:
 
 ## GitHub Actions CI/CD Setup
 
-The included workflow (`.github/workflows/build-push.yml`) builds multi-arch Docker images and pushes them to Docker Hub.
-
-### Required Secrets
-
-Add these in your GitHub repo → Settings → Secrets and variables → Actions:
-
-| Secret | Description |
-|--------|-------------|
-| `DOCKERHUB_USERNAME` | Your Docker Hub username |
-| `DOCKERHUB_TOKEN` | A Docker Hub access token (not your password) |
+The included workflow (`.github/workflows/build-push.yml`) builds multi-arch images and pushes them to the GitHub Container Registry (GHCR). No external secrets are required — the workflow authenticates with the built-in `GITHUB_TOKEN`.
 
 ### How It Works
 
 1. Push to `main` or create a version tag (`v1.0.0`)
-2. GitHub Actions builds `linux/amd64` + `linux/arm64` images
-3. Images are pushed to Docker Hub as `<username>/bilal-web` and `<username>/bilal-scheduler`
+2. Tests run; on success, GitHub Actions builds `linux/amd64` + `linux/arm64` images
+3. Images are pushed to `ghcr.io/stmehmet/bilal-web` and `ghcr.io/stmehmet/bilal-scheduler`
 4. Watchtower on the Pi automatically pulls the new images within 1 hour
 
-### Remote Updates
+### Pi authentication (private packages)
 
-Watchtower runs inside Docker Compose and checks Docker Hub every hour. To use it with your published images, update `docker-compose.yml` to reference your Docker Hub images instead of local builds:
+If the repo is private, GHCR packages are private by default. Authenticate the Pi once so Docker (and Watchtower) can pull:
 
-```yaml
-services:
-  web:
-    image: yourusername/bilal-web:latest
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
-    # ... rest of config
-```
+1. Create a GitHub fine-grained personal access token with **Contents: Read** + **Packages: Read** scoped to this repo.
+2. On the Pi:
+   ```bash
+   echo <PAT> | docker login ghcr.io -u stmehmet --password-stdin
+   ```
+   This writes `~/.docker/config.json`, which Watchtower reads.
+
+Alternatively, mark each package as public from its GitHub package settings page — source stays private while artifacts become publicly pullable.
 
 ## Security Hardening
 
