@@ -6,3 +6,4 @@ flask-wtf>=1.2.1
 werkzeug>=3.0.0
 requests>=2.31.0
 pytz>=2024.1
+adhanpy>=1.0.5

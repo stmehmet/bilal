@@ -5,19 +5,10 @@ import logging
 import os
 import socket
 
-from adhan import adhan
-from adhan.methods import (
-    ISNA,
-    EGYPT,
-    KARACHI,
-    KUWAIT,
-    MWL,
-    QATAR,
-    SINGAPORE,
-    TEHRAN,
-    TURKEY,
-    UMM_AL_QURA,
-)
+from zoneinfo import ZoneInfo
+
+from adhanpy.PrayerTimes import PrayerTimes
+from adhanpy.calculation.CalculationMethod import CalculationMethod
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -36,20 +27,20 @@ from smartthings import play_audio_on_device
 logger = logging.getLogger(__name__)
 
 METHOD_MAP = {
-    "MuslimWorldLeague": MWL,
-    "Egyptian": EGYPT,
-    "Karachi": KARACHI,
-    "UmmAlQura": UMM_AL_QURA,
-    "Kuwait": KUWAIT,
-    "Qatar": QATAR,
-    "Singapore": SINGAPORE,
-    "Tehran": TEHRAN,
-    "Turkey": TURKEY,
-    "ISNA": ISNA,
-    # Aliases that map to the closest available method
-    "Dubai": UMM_AL_QURA,
-    "MoonsightingCommittee": MWL,
-    "NorthAmerica": ISNA,
+    "MuslimWorldLeague": CalculationMethod.MUSLIM_WORLD_LEAGUE,
+    "Egyptian": CalculationMethod.EGYPTIAN,
+    "Karachi": CalculationMethod.KARACHI,
+    "UmmAlQura": CalculationMethod.UMM_AL_QURA,
+    "Dubai": CalculationMethod.DUBAI,
+    "MoonsightingCommittee": CalculationMethod.MOON_SIGHTING_COMMITTEE,
+    "NorthAmerica": CalculationMethod.NORTH_AMERICA,
+    "Kuwait": CalculationMethod.KUWAIT,
+    "Qatar": CalculationMethod.QATAR,
+    "Singapore": CalculationMethod.SINGAPORE,
+    "ISNA": CalculationMethod.NORTH_AMERICA,
+    # adhanpy doesn't ship Tehran/Turkey — alias to closest angle profile
+    "Tehran": CalculationMethod.MUSLIM_WORLD_LEAGUE,
+    "Turkey": CalculationMethod.MUSLIM_WORLD_LEAGUE,
 }
 
 
@@ -74,38 +65,30 @@ def compute_prayer_times(config: dict, date: datetime.date | None = None) -> dic
         logger.error("Location not set, cannot compute prayer times")
         return {}
 
-    tz = pytz.timezone(config.get("timezone", "UTC"))
+    tz_zi = ZoneInfo(config.get("timezone", "UTC"))
     if date is None:
-        date = datetime.datetime.now(tz).date()
+        date = datetime.datetime.now(tz_zi).date()
 
-    method_key = config.get("calculation_method", "ISNA")
-    params = METHOD_MAP.get(method_key, ISNA)
-
-    times = adhan(
-        day=date,
-        location=(config["latitude"], config["longitude"]),
-        parameters=params,
+    method = METHOD_MAP.get(
+        config.get("calculation_method", "ISNA"),
+        CalculationMethod.NORTH_AMERICA,
     )
 
-    # Map the adhan library keys to our prayer names
-    key_map = {
-        "Fajr": "fajr",
-        "Sunrise": "sunrise",
-        "Dhuhr": "dhuhr",
-        "Asr": "asr",
-        "Maghrib": "maghrib",
-        "Isha": "isha",
+    pt = PrayerTimes(
+        coordinates=(config["latitude"], config["longitude"]),
+        date=datetime.datetime(date.year, date.month, date.day),
+        calculation_method=method,
+        time_zone=tz_zi,
+    )
+
+    return {
+        "Fajr": pt.fajr,
+        "Sunrise": pt.sunrise,
+        "Dhuhr": pt.dhuhr,
+        "Asr": pt.asr,
+        "Maghrib": pt.maghrib,
+        "Isha": pt.isha,
     }
-
-    result = {}
-    for prayer, lib_key in key_map.items():
-        t = times.get(lib_key)
-        if t is not None:
-            if t.tzinfo is None:
-                t = tz.localize(t)
-            result[prayer] = t
-
-    return result
 
 
 def compute_iqamah_times(config: dict, prayer_times: dict) -> dict:

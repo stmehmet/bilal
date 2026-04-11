@@ -11,12 +11,6 @@ import pytest
 # Mock external hardware libraries that may not be installable in CI/test
 # ---------------------------------------------------------------------------
 _mock_modules = {
-    "adhan": lambda m: setattr(m, "adhan", MagicMock(return_value={})),
-    "adhan.methods": lambda m: [
-        setattr(m, attr, MagicMock())
-        for attr in ("ISNA", "EGYPT", "KARACHI", "KUWAIT", "MWL",
-                      "QATAR", "SINGAPORE", "TEHRAN", "TURKEY", "UMM_AL_QURA")
-    ],
     "pychromecast": lambda m: (
         setattr(m, "Chromecast", MagicMock),
         setattr(m, "get_chromecasts", MagicMock(return_value=([], None))),
