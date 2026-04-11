@@ -9,14 +9,12 @@ from zoneinfo import ZoneInfo
 
 from adhanpy.PrayerTimes import PrayerTimes
 from adhanpy.calculation.CalculationMethod import CalculationMethod
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
 from config import (
     AUDIO_DIR,
-    CONFIG_DIR,
     PRAYER_NAMES,
     config_changed_since,
     load_config,
@@ -254,9 +252,13 @@ class AdhanSchedulerService:
     """Manages the APScheduler instance and reschedules daily."""
 
     def __init__(self):
-        db_path = CONFIG_DIR / "scheduler_jobs.db"
-        jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{db_path}")}
-        self.scheduler = BackgroundScheduler(jobstores=jobstores)
+        # Use the default in-memory jobstore. Persistence is not needed here:
+        # every startup calls schedule_today(), which recomputes prayer times
+        # and re-registers all jobs for the day. A SQL jobstore would also
+        # require pickling bound methods (schedule_today, _check_config_change),
+        # which APScheduler refuses because they hold a reference to the
+        # scheduler itself and cannot be serialized.
+        self.scheduler = BackgroundScheduler()
         self._job_ids: list[str] = []
         self._last_config_check: float = 0.0
 

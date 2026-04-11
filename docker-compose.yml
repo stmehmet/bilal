@@ -1,5 +1,3 @@
-version: "3.8"
-
 # ---- Bilal Home Adhan System ----
 # Orchestrates the Web UI, Adhan Scheduler, and Watchtower for auto-updates.
 
@@ -57,12 +55,19 @@ services:
           cpus: "0.5"
 
   # --- Watchtower (automatic Docker image updates) ---
+  # NOTE: use nickfedor/watchtower (actively maintained fork). The original
+  # containrrr/watchtower is abandoned and ships an old moby client that
+  # speaks Docker API v1.25, which Docker Engine 25+ refuses to serve.
   watchtower:
-    image: containrrr/watchtower:latest
+    image: nickfedor/watchtower:latest
     container_name: bilal-watchtower
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the host docker config so watchtower can authenticate to GHCR
+      # for private image pulls. Matches where `docker login` writes the
+      # credentials when the installer runs as root.
+      - /root/.docker/config.json:/config.json:ro
     environment:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=3600       # Check every hour
