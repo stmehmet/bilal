@@ -6,9 +6,7 @@ version: "3.8"
 services:
   # --- Web Dashboard ---
   web:
-    build:
-      context: .
-      target: web
+    image: ghcr.io/stmehmet/bilal-web:latest
     container_name: bilal-web
     restart: unless-stopped
     ports:
@@ -36,9 +34,7 @@ services:
 
   # --- Adhan Scheduler ---
   scheduler:
-    build:
-      context: .
-      target: scheduler
+    image: ghcr.io/stmehmet/bilal-scheduler:latest
     container_name: bilal-scheduler
     restart: unless-stopped
     network_mode: host          # Required for mDNS / Chromecast discovery
