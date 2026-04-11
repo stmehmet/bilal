@@ -245,10 +245,11 @@ class TestAudio:
         assert resp.status_code == 200
 
     def test_audio_validate_returns_missing_files(self, logged_in_client):
-        # Default config references adhan_makkah.mp3 and adhan_fajr.mp3
-        # which don't exist in the tmp audio dir
+        # Default config references per-prayer adhan files which don't exist
+        # in the tmp audio dir, so all five should be reported missing.
         resp = logged_in_client.get("/api/audio/validate")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert len(data["missing"]) > 0
-        assert "adhan_makkah.mp3" in data["missing"]
+        assert len(data["missing"]) == 5
+        assert "adhan_fajr_rec2.mp3" in data["missing"]
+        assert "adhan_dhuhr_rec2.mp3" in data["missing"]

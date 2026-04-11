@@ -114,3 +114,50 @@ class TestComputeIqamahTimes:
         config = {**MAKKAH_CONFIG, "iqamah_offsets": {p: 10 for p in PRAYER_NAMES}}
         iqamah = compute_iqamah_times(config, prayer_times)
         assert "Sunrise" not in iqamah
+
+
+class TestAudioFileResolution:
+    """Verify per-prayer audio file resolution and fallback behavior."""
+
+    def _make_config(self, files):
+        return {"adhan_audio_files": files}
+
+    def test_resolve_returns_configured_file_when_present(self, tmp_path, monkeypatch):
+        import adhan_scheduler
+        monkeypatch.setattr(adhan_scheduler, "AUDIO_DIR", tmp_path)
+        (tmp_path / "adhan_fajr_custom.mp3").write_bytes(b"")
+        (tmp_path / "adhan_dhuhr_custom.mp3").write_bytes(b"")
+        config = self._make_config({
+            "Fajr": "adhan_fajr_custom.mp3",
+            "Dhuhr": "adhan_dhuhr_custom.mp3",
+        })
+        assert adhan_scheduler._resolve_audio_file("Fajr", config) == "adhan_fajr_custom.mp3"
+        assert adhan_scheduler._resolve_audio_file("Dhuhr", config) == "adhan_dhuhr_custom.mp3"
+
+    def test_resolve_falls_back_when_configured_file_missing(self, tmp_path, monkeypatch):
+        import adhan_scheduler
+        monkeypatch.setattr(adhan_scheduler, "AUDIO_DIR", tmp_path)
+        (tmp_path / "adhan_anything.mp3").write_bytes(b"")
+        config = self._make_config({"Fajr": "does_not_exist.mp3"})
+        assert adhan_scheduler._resolve_audio_file("Fajr", config) == "adhan_anything.mp3"
+
+    def test_resolve_returns_none_when_nothing_available(self, tmp_path, monkeypatch):
+        import adhan_scheduler
+        monkeypatch.setattr(adhan_scheduler, "AUDIO_DIR", tmp_path)
+        config = self._make_config({"Fajr": "missing.mp3"})
+        assert adhan_scheduler._resolve_audio_file("Fajr", config) is None
+
+    def test_validate_reports_all_missing(self, tmp_path, monkeypatch):
+        import adhan_scheduler
+        monkeypatch.setattr(adhan_scheduler, "AUDIO_DIR", tmp_path)
+        (tmp_path / "adhan_fajr_custom.mp3").write_bytes(b"")
+        config = self._make_config({
+            "Fajr": "adhan_fajr_custom.mp3",
+            "Dhuhr": "missing1.mp3",
+            "Asr": "missing2.mp3",
+            "Maghrib": "missing2.mp3",  # dedup test
+            "Isha": "missing3.mp3",
+        })
+        missing = adhan_scheduler.validate_audio_files(config)
+        assert "adhan_fajr_custom.mp3" not in missing
+        assert set(missing) == {"missing1.mp3", "missing2.mp3", "missing3.mp3"}

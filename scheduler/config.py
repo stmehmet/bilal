@@ -22,8 +22,14 @@ DEFAULT_CONFIG = {
     "speakers": {},
     "smartthings_token": "",
     "smartthings_device_id": "",
-    "adhan_file": "adhan_makkah.mp3",
-    "fajr_adhan_file": "adhan_fajr.mp3",
+    # Per-prayer adhan audio files. Keys must match PRAYER_NAMES.
+    "adhan_audio_files": {
+        "Fajr": "adhan_fajr_rec2.mp3",
+        "Dhuhr": "adhan_dhuhr_rec2.mp3",
+        "Asr": "adhan_asr_rec2.mp3",
+        "Maghrib": "adhan_maghrib_rec2.mp3",
+        "Isha": "adhan_isha_rec2.mp3",
+    },
     "volume": 0.5,
     "setup_complete": False,
     # Iqamah offsets in minutes after adhan

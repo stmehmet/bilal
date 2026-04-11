@@ -247,8 +247,6 @@ def update_config():
 
     for key in (
         "calculation_method",
-        "adhan_file",
-        "fajr_adhan_file",
         "smartthings_token",
         "smartthings_device_id",
     ):
@@ -258,6 +256,26 @@ def update_config():
     if "calculation_method" in data:
         if data["calculation_method"] not in CALCULATION_METHODS:
             errors.append(f"Invalid calculation method: {data['calculation_method']}")
+
+    # Per-prayer adhan audio files
+    if "adhan_audio_files" in data:
+        raw = data["adhan_audio_files"]
+        if not isinstance(raw, dict):
+            errors.append("adhan_audio_files must be an object keyed by prayer name")
+        else:
+            files = config.get("adhan_audio_files", {}) or {}
+            for prayer, filename in raw.items():
+                if prayer not in PRAYER_NAMES:
+                    errors.append(f"Unknown prayer: {prayer}")
+                    continue
+                if not isinstance(filename, str) or not filename.endswith(".mp3"):
+                    errors.append(f"Audio file for {prayer} must be a .mp3 filename")
+                    continue
+                if "/" in filename or "\\" in filename:
+                    errors.append(f"Audio file for {prayer} must not contain path separators")
+                    continue
+                files[prayer] = filename
+            config["adhan_audio_files"] = files
 
     if "volume" in data:
         config["volume"] = max(0.0, min(1.0, float(data["volume"])))
@@ -396,7 +414,14 @@ def api_test_speaker():
     data = request.get_json(silent=True) or {}
     speaker_name = data.get("speaker", "")
     config = load_config()
-    audio_file = config.get("adhan_file", "adhan_makkah.mp3")
+    # Use the Dhuhr file as the default test sample (any weekday adhan works)
+    audio_files = config.get("adhan_audio_files", {}) or {}
+    audio_file = audio_files.get("Dhuhr") or next(
+        (audio_files[p] for p in PRAYER_NAMES if audio_files.get(p)),
+        None,
+    )
+    if not audio_file:
+        return jsonify({"error": "No adhan audio file configured"}), 400
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -641,7 +666,7 @@ def api_config_import():
     safe_keys = {
         "latitude", "longitude", "timezone", "city", "country",
         "calculation_method", "volume", "skip_prayers",
-        "adhan_file", "fajr_adhan_file",
+        "adhan_audio_files",
         "iqamah_offsets", "iqamah_enabled", "iqamah_audio_file",
         "dnd_enabled", "dnd_start", "dnd_end",
     }

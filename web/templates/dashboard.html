@@ -136,33 +136,30 @@
           </select>
         </div>
 
-        <!-- Adhan Audio -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Adhan Audio</label>
-          <select id="adhan-file"
-                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            {% for f in audio_files %}
-            <option value="{{ f }}" {% if f == config.adhan_file %}selected{% endif %}>{{ f }}</option>
+        <!-- Per-prayer Adhan Audio (spans both columns) -->
+        <div class="md:col-span-2">
+          <label class="block text-slate-400 text-sm mb-2">Adhan Audio (per prayer)</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for name in prayer_names %}
+            <div class="bg-slate-700/50 rounded-xl p-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs uppercase tracking-wider text-slate-400">{{ name }}</span>
+                <button type="button" onclick="previewAdhan('{{ name }}')"
+                        class="text-xs text-emerald-400 hover:text-emerald-300">
+                  Preview
+                </button>
+              </div>
+              <select id="adhan-file-{{ name }}" data-prayer="{{ name }}"
+                      class="adhan-audio-select w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                             text-white outline-none focus:ring-2 focus:ring-emerald-500">
+                {% for f in audio_files %}
+                <option value="{{ f }}" {% if f == config.adhan_audio_files.get(name) %}selected{% endif %}>{{ f }}</option>
+                {% endfor %}
+              </select>
+            </div>
             {% endfor %}
-          </select>
-          <button onclick="previewAudio()"
-                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300">
-            Preview in Browser
-          </button>
+          </div>
           <audio id="preview-player" class="hidden"></audio>
-        </div>
-
-        <!-- Fajr Audio -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Fajr Adhan Audio</label>
-          <select id="fajr-adhan-file"
-                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            {% for f in audio_files %}
-            <option value="{{ f }}" {% if f == config.fajr_adhan_file %}selected{% endif %}>{{ f }}</option>
-            {% endfor %}
-          </select>
         </div>
 
         <!-- Volume -->
@@ -448,12 +445,15 @@
       document.querySelectorAll('.prayer-toggle').forEach(cb => {
         if (!cb.checked) skipPrayers.push(cb.dataset.prayer);
       });
+      const adhanAudioFiles = {};
+      document.querySelectorAll('.adhan-audio-select').forEach(sel => {
+        adhanAudioFiles[sel.dataset.prayer] = sel.value;
+      });
       const body = {
         latitude: parseFloat(document.getElementById('lat').value) || null,
         longitude: parseFloat(document.getElementById('lon').value) || null,
         calculation_method: document.getElementById('calc-method').value,
-        adhan_file: document.getElementById('adhan-file').value,
-        fajr_adhan_file: document.getElementById('fajr-adhan-file').value,
+        adhan_audio_files: adhanAudioFiles,
         volume: parseInt(document.getElementById('volume').value) / 100,
         smartthings_token: document.getElementById('st-token').value,
         smartthings_device_id: document.getElementById('st-device').value,
@@ -570,10 +570,11 @@
     });
 
     // ── Audio preview ─────────────────────────────────────────────────────────
-    function previewAudio() {
-      const file = document.getElementById('adhan-file').value;
+    function previewAdhan(prayer) {
+      const sel = document.getElementById(`adhan-file-${prayer}`);
+      if (!sel || !sel.value) return;
       const player = document.getElementById('preview-player');
-      player.src = `/audio/${file}`;
+      player.src = `/audio/${sel.value}`;
       player.classList.remove('hidden');
       player.controls = true;
       player.play();

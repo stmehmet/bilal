@@ -128,15 +128,22 @@ def _is_dnd_active(config: dict) -> bool:
 
 
 def validate_audio_files(config: dict) -> list[str]:
-    """Check all configured audio files and return a list of missing ones."""
-    files_to_check = {
-        config.get("adhan_file", "adhan_makkah.mp3"),
-        config.get("fajr_adhan_file", "adhan_fajr.mp3"),
-    }
-    missing = [f for f in files_to_check if not (AUDIO_DIR / f).is_file()]
+    """Check all configured adhan audio files and return a list of missing ones."""
+    files = config.get("adhan_audio_files", {}) or {}
+    configured = {files.get(p) for p in PRAYER_NAMES if files.get(p)}
+    missing = sorted(f for f in configured if not (AUDIO_DIR / f).is_file())
     for f in missing:
         logger.warning("Audio file missing: %s", AUDIO_DIR / f)
     return missing
+
+
+def _first_available_adhan() -> str | None:
+    """Return any `adhan_*.mp3` file in the audio dir, or None."""
+    if not AUDIO_DIR.is_dir():
+        return None
+    for candidate in sorted(AUDIO_DIR.glob("adhan_*.mp3")):
+        return candidate.name
+    return None
 
 
 def _resolve_audio_file(prayer_name: str, config: dict) -> str | None:
@@ -144,20 +151,24 @@ def _resolve_audio_file(prayer_name: str, config: dict) -> str | None:
 
     Returns the filename or None if no audio file is available.
     """
-    if prayer_name == "Fajr":
-        audio_file = config.get("fajr_adhan_file", "adhan_fajr.mp3")
-    else:
-        audio_file = config.get("adhan_file", "adhan_makkah.mp3")
+    files = config.get("adhan_audio_files", {}) or {}
+    audio_file = files.get(prayer_name)
 
-    if (AUDIO_DIR / audio_file).is_file():
+    if audio_file and (AUDIO_DIR / audio_file).is_file():
         return audio_file
 
-    logger.warning("Audio file missing: %s, trying fallback", audio_file)
-    fallback = "adhan_makkah.mp3"
-    if (AUDIO_DIR / fallback).is_file():
+    if audio_file:
+        logger.warning(
+            "Audio file missing for %s: %s, trying fallback", prayer_name, audio_file
+        )
+    else:
+        logger.warning("No audio file configured for %s, trying fallback", prayer_name)
+
+    fallback = _first_available_adhan()
+    if fallback:
         return fallback
 
-    logger.error("No audio files available in %s", AUDIO_DIR)
+    logger.error("No adhan_*.mp3 files available in %s", AUDIO_DIR)
     return None
 
 
