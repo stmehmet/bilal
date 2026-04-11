@@ -1,21 +1,30 @@
 #!/usr/bin/env bash
 # -------------------------------------------------------------------
-# Bilal – One-Line Installer for Raspberry Pi
+# Bilal – Installer for Raspberry Pi
 #
 # Usage (from a fresh Pi SSH session):
 #
+#   # One-time preconditions on a vanilla Pi OS Lite image:
+#   sudo apt update && sudo apt install -y git curl ca-certificates
+#
+#   # Credentials
 #   export GH_PAT=ghp_xxx              # classic PAT: repo + read:packages scopes
 #   export TAILSCALE_AUTHKEY=tskey-... # reusable auth key tagged tag:bilal-fleet
-#   curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
 #
-# Or, if you've already cloned the repo manually:
+#   # Clone the (private) repo and run this script
+#   git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git ~/bilal
+#   cd ~/bilal && ./scripts/install.sh
 #
-#   cd ~/bilal && TAILSCALE_AUTHKEY=tskey-... ./scripts/install.sh
+# NOTE: the old `curl | bash` one-liner does not work for private repos —
+# raw.githubusercontent.com returns 404 without auth headers, and that 404
+# gets piped straight into bash. Clone via git with the PAT embedded in the
+# URL instead; the installer re-uses the same credential for docker login.
 #
 # Env vars:
-#   GH_PAT             GitHub PAT for cloning the private repo and pulling
-#                      private GHCR images. Required if repo isn't already
-#                      cloned at $INSTALL_DIR.
+#   GH_PAT             GitHub classic PAT (repo + read:packages scopes) for
+#                      cloning the private repo and pulling private GHCR
+#                      images. Required if the repo isn't already cloned at
+#                      $INSTALL_DIR.
 #   TAILSCALE_AUTHKEY  Tailscale reusable auth key. Optional but strongly
 #                      recommended for gifted units — without it you have no
 #                      way to SSH in remotely.

@@ -59,10 +59,19 @@ Two env vars drive the installer:
 From a fresh Pi SSH session:
 
 ```bash
+# Preconditions: git + curl + ca-certificates
+sudo apt update && sudo apt install -y git curl ca-certificates
+
+# Your credentials
 export GH_PAT=ghp_xxx
 export TAILSCALE_AUTHKEY=tskey-auth-xxx
-curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
+
+# Clone the private repo using the PAT, then run the installer
+git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git ~/bilal
+cd ~/bilal && ./scripts/install.sh
 ```
+
+> **Why not `curl | bash`?** Because this repo is private, `raw.githubusercontent.com` returns 404 without auth headers, which would get piped straight into bash. Cloning with the PAT embedded in the URL is cleaner and re-uses the same credential the installer needs later for `docker login ghcr.io`.
 
 The installer will:
 
