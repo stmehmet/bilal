@@ -2,6 +2,8 @@
 
 A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automatically plays the call to prayer on Google Nest/Home speakers and Samsung SmartThings devices.
 
+> **🏛 Understanding how it works?** Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — components, data flows, and the design decisions behind them (including why the web and scheduler containers run with host networking, why the scheduler uses an in-memory jobstore, and why we picked Tailscale + Watchtower + Nominatim).
+>
 > **📖 Gifting a Pi?** Follow the full step-by-step [Deployment Runbook](./docs/DEPLOYMENT-RUNBOOK.md) — it captures every gotcha from the first real-hardware deployment so you don't make the same mistakes twice.
 >
 > **🚀 Planning a DietPi swap?** See [DietPi Migration Plan](./docs/DIETPI-MIGRATION.md) for known differences and validation checklist.

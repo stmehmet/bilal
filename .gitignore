@@ -44,3 +44,8 @@ GoogleService-Info.plist
 *-service-account*.json
 serviceAccountKey.json
 .firebase/
+
+# Local session notes / scratch files (never committed)
+SESSION-NOTES.md
+*.session.md
+.scratch/
