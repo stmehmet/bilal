@@ -26,11 +26,11 @@ DEFAULT_CONFIG = {
     # Each prayer is traditionally recited in a specific Ottoman maqam:
     # Saba (Fajr), Uşşak (Dhuhr), Rast (Asr), Segâh (Maghrib), Hicaz (Isha).
     "adhan_audio_files": {
-        "Fajr": "adhan_fajr_rec2_saba.mp3",
-        "Dhuhr": "adhan_dhuhr_rec2_ussak.mp3",
-        "Asr": "adhan_asr_rec2_rast.mp3",
-        "Maghrib": "adhan_maghrib_rec2_segah.mp3",
-        "Isha": "adhan_isha_rec2_hicaz.mp3",
+        "Fajr": "adhan_fajr_saba_2.mp3",
+        "Dhuhr": "adhan_dhuhr_ussak_2.mp3",
+        "Asr": "adhan_asr_rast_2.mp3",
+        "Maghrib": "adhan_maghrib_segah_2.mp3",
+        "Isha": "adhan_isha_hicaz_2.mp3",
     },
     "volume": 0.5,
     "setup_complete": False,
@@ -63,6 +63,34 @@ CALCULATION_METHODS = [
 
 PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
+# Filename migration map: old filenames → new filenames.
+# Applied automatically on load so deployed units migrate seamlessly.
+_FILENAME_MIGRATIONS: dict[str, str] = {
+    "adhan_fajr_rec1_saba.mp3": "adhan_fajr_saba_1.mp3",
+    "adhan_fajr_rec2_saba.mp3": "adhan_fajr_saba_2.mp3",
+    "adhan_dhuhr_rec1_ussak.mp3": "adhan_dhuhr_ussak_1.mp3",
+    "adhan_dhuhr_rec2_ussak.mp3": "adhan_dhuhr_ussak_2.mp3",
+    "adhan_asr_rec1_rast.mp3": "adhan_asr_rast_1.mp3",
+    "adhan_asr_rec2_rast.mp3": "adhan_asr_rast_2.mp3",
+    "adhan_maghrib_rec1_segah.mp3": "adhan_maghrib_segah_1.mp3",
+    "adhan_maghrib_rec2_segah.mp3": "adhan_maghrib_segah_2.mp3",
+    "adhan_isha_rec1_hicaz.mp3": "adhan_isha_hicaz_1.mp3",
+    "adhan_isha_rec2_hicaz.mp3": "adhan_isha_hicaz_2.mp3",
+}
+
+
+def _migrate_audio_filenames(config: dict) -> bool:
+    """Migrate old audio filenames to new scheme. Returns True if changed."""
+    files = config.get("adhan_audio_files", {})
+    changed = False
+    for prayer, filename in list(files.items()):
+        if filename in _FILENAME_MIGRATIONS:
+            files[prayer] = _FILENAME_MIGRATIONS[filename]
+            changed = True
+    if changed:
+        logger.info("Migrated audio filenames to new naming scheme")
+    return changed
+
 
 def load_config() -> dict:
     """Load configuration from disk, merging with defaults."""
@@ -76,6 +104,8 @@ def load_config() -> dict:
             logger.error("Corrupt config file %s: %s", CONFIG_FILE, exc)
         except OSError as exc:
             logger.error("Cannot read config file %s: %s", CONFIG_FILE, exc)
+    if _migrate_audio_filenames(config):
+        save_config(config)
     return config
 
 
