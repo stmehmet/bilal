@@ -458,3 +458,98 @@ class TestAudioFileFiltering:
         assert "iqamah_bell.mp3" not in all_in_buckets
         assert "random_noise.mp3" not in all_in_buckets
 
+
+# ---------------------------------------------------------------------------
+# Per-speaker prayer schedule
+# ---------------------------------------------------------------------------
+
+class TestSpeakerSchedule:
+    """Per-speaker, per-prayer, per-day scheduling."""
+
+    def _setup_speakers(self, client, sample_config):
+        """Helper: save config with two test speakers."""
+        sample_config["speakers"] = {
+            "Living Room": {"enabled": True, "is_group": False, "model": "Nest Mini"},
+            "Office": {"enabled": True, "is_group": False, "model": "Google Home"},
+        }
+        cfg.save_config(sample_config)
+
+    def test_no_schedule_backward_compatible(self, logged_in_client, sample_config):
+        """Speakers without a 'schedule' key play every day."""
+        self._setup_speakers(logged_in_client, sample_config)
+        config = cfg.load_config()
+        assert "schedule" not in config["speakers"]["Living Room"]
+
+    def test_set_per_prayer_schedule(self, logged_in_client, sample_config):
+        """POST /api/speakers with a schedule persists correctly."""
+        self._setup_speakers(logged_in_client, sample_config)
+        resp = logged_in_client.post("/api/speakers", json={
+            "Office": {
+                "schedule": {
+                    "Fajr": [0, 1, 2, 3, 4, 5, 6],
+                    "Dhuhr": [5, 6],
+                    "Asr": [0, 1, 2, 3, 4, 5, 6],
+                    "Maghrib": [0, 1, 2, 3, 4, 5, 6],
+                    "Isha": [0, 1, 2, 3, 4, 5, 6],
+                }
+            }
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert config["speakers"]["Office"]["schedule"]["Dhuhr"] == [5, 6]
+
+    def test_schedule_validation_rejects_invalid_day(self, logged_in_client, sample_config):
+        """Day indices outside 0-6 are filtered out."""
+        self._setup_speakers(logged_in_client, sample_config)
+        resp = logged_in_client.post("/api/speakers", json={
+            "Office": {"schedule": {"Fajr": [0, 7, -1, 3]}}
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert config["speakers"]["Office"]["schedule"]["Fajr"] == [0, 3]
+
+    def test_schedule_validation_ignores_invalid_prayer(self, logged_in_client, sample_config):
+        """Unknown prayer names are silently dropped."""
+        self._setup_speakers(logged_in_client, sample_config)
+        resp = logged_in_client.post("/api/speakers", json={
+            "Office": {"schedule": {"Zuhr": [0, 1], "Fajr": [0, 1, 2, 3, 4, 5, 6]}}
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert "Zuhr" not in config["speakers"]["Office"]["schedule"]
+        assert "Fajr" in config["speakers"]["Office"]["schedule"]
+
+    def test_schedule_null_resets(self, logged_in_client, sample_config):
+        """Setting schedule to null removes it (back to all-days default)."""
+        self._setup_speakers(logged_in_client, sample_config)
+        # First set a schedule
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"schedule": {"Fajr": [5, 6]}}
+        })
+        # Then reset
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"schedule": None}
+        })
+        config = cfg.load_config()
+        assert "schedule" not in config["speakers"]["Office"]
+
+    def test_apply_all_sets_every_speaker(self, logged_in_client, sample_config):
+        """POST /api/speakers/schedule/apply-all propagates to all speakers."""
+        self._setup_speakers(logged_in_client, sample_config)
+        resp = logged_in_client.post("/api/speakers/schedule/apply-all", json={
+            "schedule": {"Dhuhr": [5, 6], "Fajr": [0, 1, 2, 3, 4, 5, 6]}
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert config["speakers"]["Living Room"]["schedule"]["Dhuhr"] == [5, 6]
+        assert config["speakers"]["Office"]["schedule"]["Dhuhr"] == [5, 6]
+
+    def test_empty_day_list_means_never(self, logged_in_client, sample_config):
+        """An empty day list means the prayer never plays on that speaker."""
+        self._setup_speakers(logged_in_client, sample_config)
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"schedule": {"Dhuhr": []}}
+        })
+        config = cfg.load_config()
+        assert config["speakers"]["Office"]["schedule"]["Dhuhr"] == []
+
