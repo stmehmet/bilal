@@ -56,10 +56,6 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount the host docker config so watchtower can authenticate to GHCR
-      # for private image pulls. Matches where `docker login` writes the
-      # credentials when the installer runs as root.
-      - /root/.docker/config.json:/config.json:ro
     environment:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=3600       # Check every hour

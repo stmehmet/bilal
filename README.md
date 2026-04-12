@@ -51,16 +51,11 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 
 ### Prerequisites
 
-- Raspberry Pi 4 (or Zero 2 W) with Raspberry Pi OS (64-bit)
+- Raspberry Pi 4, Pi Zero 2W, or Pi 3B+ with Raspberry Pi OS Lite (64-bit)
 - Docker and Docker Compose installed
 - Adhan `.mp3` files placed in the `audio/` directory
 
 ### Installation
-
-Two env vars drive the installer:
-
-- `GH_PAT` — a GitHub **classic** personal access token with `repo` + `read:packages` scopes. Required because the repo and GHCR packages are private. Create one at https://github.com/settings/tokens (click **Generate new token → Generate new token (classic)**). Fine-grained tokens don't support `ghcr.io` container-registry auth yet, so we need a classic one.
-- `TAILSCALE_AUTHKEY` — a Tailscale reusable auth key (tagged `tag:bilal-fleet`). Optional but strongly recommended: without it you have no way to SSH into the Pi remotely once it leaves your hands. Create one at https://login.tailscale.com/admin/settings/keys.
 
 From a fresh Pi SSH session:
 
@@ -68,27 +63,23 @@ From a fresh Pi SSH session:
 # Preconditions: git + curl + ca-certificates
 sudo apt update && sudo apt install -y git curl ca-certificates
 
-# Your credentials
-export GH_PAT=ghp_xxx
+# Optional but recommended for remote access to gifted units
 export TAILSCALE_AUTHKEY=tskey-auth-xxx
 
-# Clone the private repo using the PAT, then run the installer
-git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git ~/bilal
+# Clone and install
+git clone https://github.com/stmehmet/bilal.git ~/bilal
 cd ~/bilal && ./scripts/install.sh
 ```
-
-> **Why not `curl | bash`?** Because this repo is private, `raw.githubusercontent.com` returns 404 without auth headers, which would get piped straight into bash. Cloning with the PAT embedded in the URL is cleaner and re-uses the same credential the installer needs later for `docker login ghcr.io`.
 
 The installer will:
 
 1. Install Docker + Compose plugin
-2. Install Tailscale and join the tailnet (with `--ssh` so you don't need to manage OpenSSH keys separately)
+2. Install Tailscale and join the tailnet (with `--ssh` for remote access)
 3. Clone the repo to `~/bilal`
-4. Log in to `ghcr.io` so `docker compose pull` and Watchtower can fetch private images
-5. Generate a `.env` with a random `SECRET_KEY`
-6. `docker compose pull && docker compose up -d`
+4. Generate a `.env` with a random `SECRET_KEY`
+5. `docker compose pull && docker compose up -d`
 
-If you've already cloned the repo manually, you can skip the one-liner and just run it from inside the repo:
+If you've already cloned the repo, just run the installer directly:
 
 ```bash
 cd ~/bilal
@@ -108,18 +99,17 @@ The end-to-end recipe for assembling a unit to hand off to a family member:
    - Username / password
    - Your own public SSH key (optional — Tailscale SSH is the primary remote path)
    - Locale + timezone
-2. **Mint credentials once** on your workstation:
-   - `GH_PAT` — **classic** PAT with `repo` + `read:packages` scopes (fine-grained tokens don't support `ghcr.io` yet)
-   - `TAILSCALE_AUTHKEY` — reusable, pre-authorized auth key tagged `tag:bilal-fleet` (one key works for the whole fleet)
+2. **Mint a Tailscale auth key** on your workstation:
+   - `TAILSCALE_AUTHKEY` — reusable, pre-authorized auth key tagged `tag:bilal-fleet` (one key works for the whole fleet). Create at https://login.tailscale.com/admin/settings/keys.
 3. **Boot the Pi** and either:
    - Plug it into ethernet, or
    - Let the captive portal come up: connect your phone to the `Bilal-Setup` hotspot (password `bilal1234`), open `http://192.168.4.1:5000`, and enter the recipient's WiFi credentials.
 4. **SSH in and run the installer**:
    ```bash
    ssh <user>@bilal-<name>.local
-   export GH_PAT=ghp_xxx
    export TAILSCALE_AUTHKEY=tskey-auth-xxx
-   curl -sSL https://raw.githubusercontent.com/stmehmet/bilal/main/scripts/install.sh | bash
+   git clone https://github.com/stmehmet/bilal.git ~/bilal
+   cd ~/bilal && ./scripts/install.sh
    ```
 5. **Verify remote access** — the Pi should appear in your Tailscale admin at https://login.tailscale.com/admin/machines as `bilal-<machine-id-prefix>`. From your laptop, anywhere:
    ```bash
@@ -174,19 +164,6 @@ The included workflow (`.github/workflows/build-push.yml`) builds multi-arch ima
 2. Tests run; on success, GitHub Actions builds `linux/amd64` + `linux/arm64` images
 3. Images are pushed to `ghcr.io/stmehmet/bilal-web` and `ghcr.io/stmehmet/bilal-scheduler`
 4. Watchtower on the Pi automatically pulls the new images within 1 hour
-
-### Pi authentication (private packages)
-
-If the repo is private, GHCR packages are private by default. Authenticate the Pi once so Docker (and Watchtower) can pull:
-
-1. Create a GitHub **classic** personal access token with `repo` + `read:packages` scopes at https://github.com/settings/tokens (fine-grained tokens don't support `ghcr.io` container-registry auth).
-2. On the Pi:
-   ```bash
-   echo <PAT> | docker login ghcr.io -u stmehmet --password-stdin
-   ```
-   This writes `~/.docker/config.json`, which Watchtower reads.
-
-Alternatively, mark each package as public from its GitHub package settings page — source stays private while artifacts become publicly pullable.
 
 ## Security Hardening
 
