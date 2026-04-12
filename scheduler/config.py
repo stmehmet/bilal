@@ -66,6 +66,7 @@ PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 # Filename migration map: old filenames → new filenames.
 # Applied automatically on load so deployed units migrate seamlessly.
 _FILENAME_MIGRATIONS: dict[str, str] = {
+    # rec1/rec2 intermediate names → final names
     "adhan_fajr_rec1_saba.mp3": "adhan_fajr_saba_1.mp3",
     "adhan_fajr_rec2_saba.mp3": "adhan_fajr_saba_2.mp3",
     "adhan_dhuhr_rec1_ussak.mp3": "adhan_dhuhr_ussak_1.mp3",
@@ -76,6 +77,17 @@ _FILENAME_MIGRATIONS: dict[str, str] = {
     "adhan_maghrib_rec2_segah.mp3": "adhan_maghrib_segah_2.mp3",
     "adhan_isha_rec1_hicaz.mp3": "adhan_isha_hicaz_1.mp3",
     "adhan_isha_rec2_hicaz.mp3": "adhan_isha_hicaz_2.mp3",
+    # Legacy names from pre-rename deployments → final names
+    "adhan_fajr_ismailCosar_saba.mp3": "adhan_fajr_saba_1.mp3",
+    "adhan_fajr_nurettinOkumus_saba.mp3": "adhan_fajr_saba_2.mp3",
+    "adhan_dhuhr_ismailCosar_ussak.mp3": "adhan_dhuhr_ussak_1.mp3",
+    "adhan_dhuhr_nurettinOkumus_ussak.mp3": "adhan_dhuhr_ussak_2.mp3",
+    "adhan_asr_ismailCosar_rast.mp3": "adhan_asr_rast_1.mp3",
+    "adhan_asr_nurettinOkumus_rast.mp3": "adhan_asr_rast_2.mp3",
+    "adhan_maghrib_ismailCosar_segah.mp3": "adhan_maghrib_segah_1.mp3",
+    "adhan_maghrib_nurettinOkumus_segah.mp3": "adhan_maghrib_segah_2.mp3",
+    "adhan_isha_ismailCosar_hicaz.mp3": "adhan_isha_hicaz_1.mp3",
+    "adhan_isha_nurettinOkumus_hicaz.mp3": "adhan_isha_hicaz_2.mp3",
 }
 
 
