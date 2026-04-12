@@ -553,3 +553,34 @@ class TestSpeakerSchedule:
         config = cfg.load_config()
         assert config["speakers"]["Office"]["schedule"]["Dhuhr"] == []
 
+    def test_set_speaker_volume(self, logged_in_client, sample_config):
+        """Per-speaker volume override persists correctly."""
+        self._setup_speakers(logged_in_client, sample_config)
+        resp = logged_in_client.post("/api/speakers", json={
+            "Office": {"volume": 0.3}
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert config["speakers"]["Office"]["volume"] == 0.3
+
+    def test_speaker_volume_clamped(self, logged_in_client, sample_config):
+        """Volume values are clamped to 0.0–1.0."""
+        self._setup_speakers(logged_in_client, sample_config)
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"volume": 1.5}
+        })
+        config = cfg.load_config()
+        assert config["speakers"]["Office"]["volume"] == 1.0
+
+    def test_reset_speaker_volume(self, logged_in_client, sample_config):
+        """Setting volume to null removes the override."""
+        self._setup_speakers(logged_in_client, sample_config)
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"volume": 0.3}
+        })
+        logged_in_client.post("/api/speakers", json={
+            "Office": {"volume": None}
+        })
+        config = cfg.load_config()
+        assert "volume" not in config["speakers"]["Office"]
+
