@@ -102,6 +102,7 @@ def play_on_all(
     enabled_names: list[str],
     media_url: str,
     volume: float = 0.5,
+    speaker_volumes: dict[str, float] | None = None,
 ) -> dict[str, bool]:
     """Play audio on all enabled speakers.
 
@@ -109,14 +110,16 @@ def play_on_all(
         devices: All discovered devices.
         enabled_names: Friendly names of speakers that should play.
         media_url: HTTP URL to the audio file.
-        volume: Playback volume.
+        volume: Default playback volume (used when no per-speaker override).
+        speaker_volumes: Optional per-speaker volume overrides.
 
     Returns a dict of device_name -> success.
     """
     results = {}
     for name in enabled_names:
         if name in devices:
-            results[name] = play_on_chromecast(devices[name], media_url, volume=volume)
+            vol = speaker_volumes.get(name, volume) if speaker_volumes else volume
+            results[name] = play_on_chromecast(devices[name], media_url, volume=vol)
         else:
             logger.warning("Speaker '%s' not found on network", name)
             results[name] = False

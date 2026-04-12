@@ -581,6 +581,16 @@ def api_update_speakers():
                             {d for d in days if isinstance(d, int) and 0 <= d <= 6}
                         )
                 speakers[name]["schedule"] = validated
+        if "volume" in info:
+            vol = info["volume"]
+            if vol is None:
+                speakers[name].pop("volume", None)
+            else:
+                try:
+                    vol = float(vol)
+                    speakers[name]["volume"] = max(0.0, min(1.0, vol))
+                except (TypeError, ValueError):
+                    pass
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"status": "ok"})

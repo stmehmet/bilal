@@ -416,6 +416,23 @@
               <i class="ph ph-play"></i> Test
             </button>
           </div>
+          {# Per-speaker volume override #}
+          {% set speaker_vol = info.get('volume') %}
+          <div class="mt-2 flex items-center gap-2">
+            <i class="ph ph-speaker-high text-slate-500 text-xs"></i>
+            <input type="range" min="0" max="100"
+                   value="{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}"
+                   class="flex-1 accent-emerald-500 h-1.5 speaker-volume"
+                   data-speaker="{{ name }}"
+                   oninput="this.nextElementSibling.textContent = this.value + '%'">
+            <span class="text-xs text-slate-400 w-8">{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}%</span>
+            <button onclick="resetSpeakerVolume('{{ name }}')"
+                    class="text-[10px] text-slate-500 hover:text-slate-300 {% if speaker_vol is none %}hidden{% endif %}"
+                    data-speaker="{{ name }}" data-reset-btn
+                    title="Reset to global volume ({{ (config.volume * 100)|int }}%)">
+              <i class="ph ph-arrow-counter-clockwise"></i>
+            </button>
+          </div>
           {# Per-speaker prayer schedule #}
           <details class="mt-2">
             <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
@@ -818,6 +835,42 @@
         });
       });
     });
+
+    // ── Per-speaker volume ──────────────────────────────────────────────────
+    const GLOBAL_VOLUME = {{ (config.volume * 100)|int }};
+
+    document.querySelectorAll('.speaker-volume').forEach(slider => {
+      let debounce;
+      slider.addEventListener('input', () => {
+        clearTimeout(debounce);
+        const speaker = slider.dataset.speaker;
+        // Show reset button when volume differs from global
+        const resetBtn = slider.closest('div').querySelector('[data-reset-btn]');
+        if (resetBtn) resetBtn.classList.toggle('hidden', parseInt(slider.value) === GLOBAL_VOLUME);
+        debounce = setTimeout(async () => {
+          await fetch('/api/speakers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [speaker]: { volume: parseInt(slider.value) / 100 } }),
+          });
+        }, 300);
+      });
+    });
+
+    async function resetSpeakerVolume(speaker) {
+      const slider = document.querySelector(`.speaker-volume[data-speaker="${speaker}"]`);
+      if (slider) {
+        slider.value = GLOBAL_VOLUME;
+        slider.nextElementSibling.textContent = GLOBAL_VOLUME + '%';
+      }
+      const resetBtn = document.querySelector(`[data-reset-btn][data-speaker="${speaker}"]`);
+      if (resetBtn) resetBtn.classList.add('hidden');
+      await fetch('/api/speakers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [speaker]: { volume: null } }),
+      });
+    }
 
     // ── Per-speaker schedule ──────────────────────────────────────────────────
     const ALL_DAYS = [0,1,2,3,4,5,6];
