@@ -8,23 +8,13 @@
 #   sudo apt update && sudo apt install -y git curl ca-certificates
 #
 #   # Credentials
-#   export GH_PAT=ghp_xxx              # classic PAT: repo + read:packages scopes
 #   export TAILSCALE_AUTHKEY=tskey-... # reusable auth key tagged tag:bilal-fleet
 #
-#   # Clone the (private) repo and run this script
-#   git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git ~/bilal
+#   # Clone the repo and run this script
+#   git clone https://github.com/stmehmet/bilal.git ~/bilal
 #   cd ~/bilal && ./scripts/install.sh
 #
-# NOTE: the old `curl | bash` one-liner does not work for private repos —
-# raw.githubusercontent.com returns 404 without auth headers, and that 404
-# gets piped straight into bash. Clone via git with the PAT embedded in the
-# URL instead; the installer re-uses the same credential for docker login.
-#
 # Env vars:
-#   GH_PAT             GitHub classic PAT (repo + read:packages scopes) for
-#                      cloning the private repo and pulling private GHCR
-#                      images. Required if the repo isn't already cloned at
-#                      $INSTALL_DIR.
 #   TAILSCALE_AUTHKEY  Tailscale reusable auth key. Optional but strongly
 #                      recommended for gifted units — without it you have no
 #                      way to SSH in remotely.
@@ -101,38 +91,15 @@ if [ -d "$INSTALL_DIR/.git" ]; then
     cd "$INSTALL_DIR"
     git pull --ff-only
 else
-    if [ -z "${GH_PAT:-}" ]; then
-        err "GH_PAT not set and no existing install at $INSTALL_DIR."
-        err "  The $REPO_OWNER/$REPO_NAME repo is private. Create a classic PAT at"
-        err "  https://github.com/settings/tokens (Generate new token -> classic) with"
-        err "  'repo' and 'read:packages' scopes, then: export GH_PAT=ghp_... and re-run."
-        err "  (Fine-grained tokens don't support ghcr.io container-registry auth yet.)"
-        exit 1
-    fi
     log "Cloning $REPO_OWNER/$REPO_NAME into $INSTALL_DIR..."
-    git clone "https://${REPO_OWNER}:${GH_PAT}@github.com/${REPO_OWNER}/${REPO_NAME}.git" "$INSTALL_DIR"
+    git clone "${REPO_URL}" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Log in to GHCR so docker-compose and Watchtower can pull private images
+# 4. Audio files — verify, don't block
 # ---------------------------------------------------------------------------
-if [ -n "${GH_PAT:-}" ]; then
-    if [ ! -f "${HOME}/.docker/config.json" ] \
-       || ! grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
-        log "Logging in to ghcr.io..."
-        echo "$GH_PAT" | $DOCKER login ghcr.io -u "$REPO_OWNER" --password-stdin
-    else
-        log "ghcr.io login already present in ~/.docker/config.json."
-    fi
-else
-    warn "GH_PAT not set — skipping GHCR login."
-    warn "  If the package is private, docker compose pull will fail on the next step."
-fi
-
-# ---------------------------------------------------------------------------
-# 5. Audio files — verify, don't block
-# ---------------------------------------------------------------------------
+# (GHCR login is no longer needed — the repo and packages are public.)
 if [ -z "$(find "$INSTALL_DIR/audio" -maxdepth 1 -name '*.mp3' -print -quit 2>/dev/null)" ]; then
     warn "No .mp3 files found in $INSTALL_DIR/audio/"
     warn "  The scheduler will start but won't have anything to play."
@@ -140,7 +107,7 @@ if [ -z "$(find "$INSTALL_DIR/audio" -maxdepth 1 -name '*.mp3' -print -quit 2>/d
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Generate .env with a random SECRET_KEY if missing
+# 5. Generate .env with a random SECRET_KEY if missing
 # ---------------------------------------------------------------------------
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     SECRET=$(openssl rand -hex 32)
@@ -149,7 +116,7 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Pull images from GHCR and start the stack
+# 6. Pull images from GHCR and start the stack
 # ---------------------------------------------------------------------------
 log "Pulling latest images from GHCR..."
 cd "$INSTALL_DIR"
@@ -159,7 +126,7 @@ log "Starting bilal..."
 $DOCKER compose up -d
 
 # ---------------------------------------------------------------------------
-# 8. Summary
+# 7. Summary
 # ---------------------------------------------------------------------------
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "$LAN_IP" ]; then

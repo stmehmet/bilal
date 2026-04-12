@@ -27,7 +27,7 @@ Step-by-step guide for taking a Raspberry Pi from bare hardware to a fully-confi
 
 | Item | Notes |
 |------|-------|
-| Raspberry Pi 4 (or Pi 4B) | 2GB+ RAM. Pi 5 also works. |
+| Raspberry Pi 4, Pi Zero 2W, or Pi 3B+ | 1 GB+ RAM. Pi 5 also works. Pi Zero 2W ($15) is the recommended fleet unit. |
 | microSD card, **16 GB minimum** | Docker + images alone needs ~4 GB. **4 GB cards fail with "No space left on device" during the Tailscale install** — don't try to save money here. 32 GB or 64 GB is safest. |
 | Power supply (USB-C, 5V/3A) | Official Pi supply is ideal; underpowered supplies cause cryptic filesystem errors. |
 | Ethernet cable (optional) | Only needed for first-boot before WiFi joins; can skip if you preconfigure WiFi in Pi Imager. |
@@ -40,16 +40,6 @@ Step-by-step guide for taking a Raspberry Pi from bare hardware to a fully-confi
   ```bash
   ssh-keygen -t ed25519 -C "you@example.com" -f ~/.ssh/id_ed25519
   ```
-
-### GitHub Personal Access Token (`GH_PAT`)
-
-Needed because this repo + the GHCR packages (`bilal-web`, `bilal-scheduler`) are private.
-
-1. Go to https://github.com/settings/tokens
-2. Click **Generate new token → Generate new token (classic)**. Classic, not fine-grained. Fine-grained tokens do **not** support `ghcr.io` container-registry auth ([github/roadmap#558](https://github.com/github/roadmap/issues/558)).
-3. Scopes needed: `repo` + `read:packages`
-4. Expiration: your call; 90 days is fine for a gift-deployment workflow.
-5. Copy the `ghp_...` string immediately — GitHub only shows it once.
 
 ### Tailscale auth key (`TAILSCALE_AUTHKEY`)
 
@@ -161,33 +151,29 @@ ssh bilal@<lan-ip>
 
 ## 5. Run the installer
 
-Still in the SSH session from the previous step. The installer uses two environment variables from section 1.
+Still in the SSH session from the previous step.
 
 ```bash
 # Preconditions — git and curl may or may not be preinstalled on Pi OS Lite
 sudo apt update && sudo apt install -y git curl ca-certificates
 
-# Paste your credentials (replace the placeholder values)
-export GH_PAT=ghp_your_classic_token
+# Optional but recommended for remote access
 export TAILSCALE_AUTHKEY=tskey-auth-your-reusable-key
 
-# Clone the private repo using the PAT, then run the installer
-git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git ~/bilal
+# Clone the repo and run the installer
+git clone https://github.com/stmehmet/bilal.git ~/bilal
 cd ~/bilal && ./scripts/install.sh
 ```
 
-> **Why clone-with-PAT instead of `curl | bash`?** The repo is private. `raw.githubusercontent.com` returns an HTML 404 without auth headers, and that 404 body would get piped straight into bash → `bash: line 1: 404:: command not found`. Cloning with the PAT embedded in the URL reuses the credential the installer needs anyway for `docker login ghcr.io`.
+The installer runs 7 steps:
 
-The installer runs 8 steps:
-
-1. Install Docker Engine + Compose plugin (takes ~3–5 min on a Pi 4)
+1. Install Docker Engine + Compose plugin (takes ~3–5 min on a Pi 4, longer on Pi Zero 2W)
 2. Install Tailscale
 3. `tailscale up --authkey <key> --ssh --hostname=bilal-<machine-id>`
 4. Clone the repo to `~/bilal` (skipped because you already cloned it)
-5. `docker login ghcr.io` using `GH_PAT`
-6. Verify `audio/` has at least one mp3 file
-7. Generate `.env` with a random `SECRET_KEY`
-8. `docker compose pull && docker compose up -d`
+5. Verify `audio/` has at least one mp3 file
+6. Generate `.env` with a random `SECRET_KEY`
+7. `docker compose pull && docker compose up -d`
 
 Expected final output:
 
@@ -208,23 +194,7 @@ Note the MagicDNS hostname — you'll use it for every future remote access.
 
 Two one-time cleanups before the system is actually usable.
 
-### 6.1. Copy docker credentials to the user home dir
-
-The installer runs `docker login` under `sudo`, which writes credentials to **`/root/.docker/config.json`** — not `~bilal/.docker/config.json`. As a result, `docker compose pull` fails with `unauthorized` when run as the `bilal` user. Fix:
-
-```bash
-sudo mkdir -p ~/.docker
-sudo cp /root/.docker/config.json ~/.docker/config.json
-sudo chown -R bilal:bilal ~/.docker
-chmod 600 ~/.docker/config.json
-
-# Sanity check — should say "Image is up to date" or "Downloaded newer image"
-docker pull ghcr.io/stmehmet/bilal-web:latest
-```
-
-> **TODO (installer improvement):** wrap the `docker login` in `sg docker -c "..."` so credentials land in `/home/bilal/.docker/config.json` on the first run. Tracked as follow-up.
-
-### 6.2. Enable cgroup memory (optional but recommended)
+### 6.1. Enable cgroup memory (optional but recommended)
 
 Pi OS Lite disables cgroup memory accounting by default, which means the `memory: 256M` limits in `docker-compose.yml` are silently ignored. To enable them:
 
@@ -422,12 +392,6 @@ The Pi can travel with the SD card installed. On arrival, the recipient plugs it
 
 Actual issues we hit on the first real-hardware deployment and how we fixed them.
 
-### `bash: line 1: 404:: command not found`
-
-**Cause:** The old README documented `curl -sSL https://raw.githubusercontent.com/.../install.sh | bash`. Because the repo is private, raw.githubusercontent.com returns an HTML 404 without auth headers, and that body gets piped into bash.
-
-**Fix:** Use `git clone https://stmehmet:${GH_PAT}@github.com/stmehmet/bilal.git` instead. README was updated in PR #13.
-
 ### `Err: No space left on device` during Tailscale install
 
 **Cause:** The SD card was too small (4 GB). Docker install alone consumed ~3 GB. The rootfs auto-expansion was fine; the card is physically too small.
@@ -453,12 +417,6 @@ ssh-keygen -R bilal-<machine-id>
 ssh-keygen -R <tailscale-ip>
 tailscale ssh --accept-new bilal@bilal-<machine-id>
 ```
-
-### `unauthorized` when running `docker compose pull` as the `bilal` user
-
-**Cause:** The installer ran `sudo docker login ghcr.io`, which writes credentials to `/root/.docker/config.json`. Non-root docker commands look at `~/.docker/config.json`, which doesn't have the GHCR creds.
-
-**Fix:** See [section 6.1](#61-copy-docker-credentials-to-the-user-home-dir) above.
 
 ### `bilal-scheduler` crash loop: `TypeError: Schedulers cannot be serialized`
 
@@ -531,9 +489,7 @@ That's the whole value proposition: push a fix to `main`, wait an hour, and ever
 
 ## Appendix B: Key open follow-ups
 
-- [ ] **Installer**: run `docker login` as the `bilal` user via `sg docker -c "..."` so credentials land in `/home/bilal/.docker/config.json` on first install (eliminates [section 6.1](#61-copy-docker-credentials-to-the-user-home-dir))
-- [ ] **GitHub machine user**: create `stmehmet-bilal-bot` with its own `GH_PAT`, so gift units don't bake in your personal PAT
 - [ ] **DietPi migration**: see [`DIETPI-MIGRATION.md`](./DIETPI-MIGRATION.md)
-- [ ] **Iqamah audio**: add `iqamah_rec1.mp3` and `iqamah_rec2.mp3` so users can pick a second-muezzin iqamah bell
+- [ ] **Iqamah audio**: add iqamah audio files so users can pick an iqamah sound
 - [ ] **In-container WiFi management**: wire NetworkManager dbus + nmcli into the web container so the WiFi tab works without SSH
 - [ ] **Street-number geocoding**: merge the `feat/geocode-street-fallback` PR after testing

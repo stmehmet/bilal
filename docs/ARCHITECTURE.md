@@ -165,7 +165,7 @@ Answering that question well is why we use Tailscale, Watchtower, container auto
 - `WATCHTOWER_CLEANUP=true` (removes old image layers after update)
 - `WATCHTOWER_LABEL_ENABLE=true` (only updates containers with `com.centurylinklabs.watchtower.enable=true` label)
 
-**Auth:** Reads `/root/.docker/config.json` (mounted read-only) to authenticate to GHCR for private image pulls.
+**Auth:** The repo and GHCR packages are public — no authentication needed for pulls. (Prior to the public-repo migration, Watchtower read `/root/.docker/config.json` for GHCR credentials; this mount has been removed.)
 
 **Observed real-world update cycle:** 8 seconds of total downtime for a rolling restart of both bilal containers (measured on Pi 4B 4GB over WiFi).
 
@@ -218,15 +218,14 @@ Fresh Pi boot
 [Maintainer SSHs in with classic GH PAT + Tailscale auth key]
   │
   ▼
-[scripts/install.sh — 8 steps]
+[scripts/install.sh — 7 steps]
   1. apt install docker-ce + docker-compose-plugin
   2. Install Tailscale, `tailscale up --ssh --authkey=...`
   3. Clone repo (skipped if already cloned)
-  4. `docker login ghcr.io` with GH_PAT
-  5. Verify audio/ has at least one mp3
-  6. Generate .env with random SECRET_KEY
-  7. `docker compose pull` (pulls private images over authed GHCR)
-  8. `docker compose up -d`
+  4. Verify audio/ has at least one mp3
+  5. Generate .env with random SECRET_KEY
+  6. `docker compose pull` (public GHCR images, no auth needed)
+  7. `docker compose up -d`
   │
   ▼
 [First-boot dashboard visit at http://bilal-<id>:5000]
@@ -595,7 +594,7 @@ Bilal is a **single-user appliance in a private home**. We're defending against:
 1. **Random scanners on the recipient's WiFi** finding the dashboard and poking at it
 2. **Malicious guests** on the WiFi (same attack surface, different motivation)
 3. **The internet at large** if the router is ever misconfigured with port forwarding
-4. **Credential leakage** from the maintainer's machine (GH_PAT, Tailscale auth key)
+4. **Credential leakage** from the maintainer's machine (Tailscale auth key)
 
 We are **not** defending against:
 - Physical access to the SD card (anyone who can pull the card can read `/data/config.json`)
@@ -614,13 +613,12 @@ We are **not** defending against:
 
 5. **Container non-root user** — both web and scheduler run as `bilal` (UID ~999), not root. Limits blast radius if a Flask endpoint is compromised.
 
-6. **GHCR authentication with least-privilege PAT** — the classic PAT used for `docker login ghcr.io` has `repo` + `read:packages` scopes only. No write access to the repo from the Pi. (TODO: migrate to a dedicated machine-user PAT before shipping to more recipients.)
+6. **Public GHCR packages** — the repo and container images are public. No credentials are stored on the Pi for image pulls, eliminating credential leakage as an attack vector. Watchtower pulls without authentication.
 
 7. **Tailscale ACL tagging** — gift units are tagged `tag:bilal-fleet` and the ACL only grants `autogroup:admin` SSH access to them. If a recipient ever joined the tailnet themselves, they still couldn't SSH into each other's units.
 
 ### Known gaps and accepted risks
 
-- `/root/.docker/config.json` contains the GHCR PAT in base64. Anyone with host root on the Pi can read it. Mitigated by: tailnet-only access + Tailscale SSH requiring admin tag grant.
 - `SECRET_KEY` is generated once per install in `.env` and persists on the bind mount. If the volume is compromised, all Flask sessions on that Pi can be forged. Mitigated by: session only grants dashboard access, which is already gated by the password.
 - The Chromecast cast protocol is unauthenticated on the LAN. Any device on the WiFi can push audio to a Nest speaker. This is a property of Chromecast, not Bilal.
 - Watchtower pulls any new digest published under the `:latest` tag. A compromise of the GHCR push credential would push malicious images to the entire fleet. Mitigated by: `GITHUB_TOKEN` in GHA is scoped per-workflow, never persisted, and can't be used to push without the workflow running.
