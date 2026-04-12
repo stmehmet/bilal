@@ -548,8 +548,54 @@ def api_update_speakers():
     config = load_config()
     speakers = config.get("speakers", {})
     for name, info in data.items():
-        if name in speakers:
-            speakers[name]["enabled"] = bool(info.get("enabled", True))
+        if name not in speakers:
+            continue
+        if "enabled" in info:
+            speakers[name]["enabled"] = bool(info["enabled"])
+        if "schedule" in info:
+            schedule = info["schedule"]
+            if schedule is None:
+                speakers[name].pop("schedule", None)
+            elif isinstance(schedule, dict):
+                validated: dict[str, list[int] | None] = {}
+                for prayer, days in schedule.items():
+                    if prayer not in PRAYER_NAMES:
+                        continue
+                    if days is None:
+                        validated[prayer] = None
+                    elif isinstance(days, list):
+                        validated[prayer] = sorted(
+                            {d for d in days if isinstance(d, int) and 0 <= d <= 6}
+                        )
+                speakers[name]["schedule"] = validated
+    config["speakers"] = speakers
+    save_config(config)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/speakers/schedule/apply-all", methods=["POST"])
+@login_required
+def api_speakers_schedule_apply_all():
+    """Apply one schedule template to every speaker."""
+    data = request.get_json(silent=True) or {}
+    schedule_template = data.get("schedule")
+    config = load_config()
+    speakers = config.get("speakers", {})
+    for name in speakers:
+        if schedule_template is None:
+            speakers[name].pop("schedule", None)
+        elif isinstance(schedule_template, dict):
+            validated: dict[str, list[int] | None] = {}
+            for prayer, days in schedule_template.items():
+                if prayer not in PRAYER_NAMES:
+                    continue
+                if days is None:
+                    validated[prayer] = None
+                elif isinstance(days, list):
+                    validated[prayer] = sorted(
+                        {d for d in days if isinstance(d, int) and 0 <= d <= 6}
+                    )
+            speakers[name]["schedule"] = validated
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"status": "ok"})
