@@ -55,7 +55,7 @@
     {% if next_prayer %}
     <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <i class="ph ph-moon-stars text-emerald-400 text-4xl"></i>
+        <i class="ph {{ prayer_icons.get(next_prayer.name, 'ph-moon-stars') }} text-emerald-400 text-4xl"></i>
         <div>
           <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Next Prayer</div>
           <div class="text-2xl font-bold text-white">{{ next_prayer.name }}</div>
@@ -100,7 +100,9 @@
             {% for name in prayer_names %}
             {% set skipped = name in config.skip_prayers %}
             <tr class="border-b border-slate-700/50 {% if skipped %}opacity-40{% endif %}">
-              <td class="py-3 font-medium">{{ name }}</td>
+              <td class="py-3 font-medium">
+                <i class="ph {{ prayer_icons.get(name, '') }} mr-1 text-slate-400"></i>{{ name }}
+              </td>
               <td class="text-center font-mono {% if skipped %}line-through{% endif %}">
                 {{ prayer_times.get(name, '--:--') }}
               </td>
@@ -245,34 +247,6 @@
                  class="w-full accent-emerald-500">
         </div>
 
-        <!-- SmartThings -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">SmartThings Token</label>
-          <input id="st-token" type="password" placeholder="Personal Access Token"
-                 value="{{ config.smartthings_token }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-        </div>
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">SmartThings Device ID</label>
-          <div class="flex gap-2">
-            <input id="st-device" type="text" placeholder="Device UUID"
-                   value="{{ config.smartthings_device_id }}"
-                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
-                    class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
-                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed
-                           inline-flex items-center gap-1.5"
-                    title="Enter a token first to browse devices">
-              <i class="ph ph-list-magnifying-glass"></i> Browse
-            </button>
-          </div>
-          <select id="st-device-select" onchange="selectSmartThingsDevice()"
-                  class="hidden mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2
-                         text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          </select>
-        </div>
       </div>
 
       <button onclick="saveSettings()"
@@ -321,7 +295,7 @@
         {% endfor %}
       </div>
       <button onclick="saveIqamah()"
-              class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
+              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
                      rounded-lg transition-colors inline-flex items-center justify-center gap-2">
         <i class="ph ph-floppy-disk"></i> Save Iqamah Offsets
       </button>
@@ -361,7 +335,7 @@
         </div>
       </div>
       <button onclick="saveDND()"
-              class="mt-4 w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-2.5
+              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
                      rounded-lg transition-colors inline-flex items-center justify-center gap-2">
         <i class="ph ph-floppy-disk"></i> Save DND Schedule
       </button>
@@ -480,6 +454,47 @@
         <p class="text-slate-500 text-sm">No speakers discovered yet. Click "Discover Speakers" to scan your network.</p>
         {% endif %}
       </div>
+    </section>
+
+    <!-- SmartThings Integration -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
+        <i class="ph ph-devices"></i> SmartThings
+      </h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Token</label>
+          <input id="st-token" type="password" placeholder="Personal Access Token"
+                 value="{{ config.smartthings_token }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Device ID</label>
+          <div class="flex gap-2">
+            <input id="st-device" type="text" placeholder="Device UUID"
+                   value="{{ config.smartthings_device_id }}"
+                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
+                    class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
+                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed
+                           inline-flex items-center gap-1.5"
+                    title="Enter a token first to browse devices">
+              <i class="ph ph-list-magnifying-glass"></i> Browse
+            </button>
+          </div>
+          <select id="st-device-select" onchange="selectSmartThingsDevice()"
+                  class="hidden mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2
+                         text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500">
+          </select>
+        </div>
+      </div>
+      <button onclick="saveSettings()"
+              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
+                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
+        <i class="ph ph-floppy-disk"></i> Save SmartThings
+      </button>
     </section>
 
     <!-- WiFi Configuration -->
