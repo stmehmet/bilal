@@ -57,6 +57,18 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 
 
 # ---------------------------------------------------------------------------
+# Prayer icons — Phosphor icon classes for each prayer's time of day
+# ---------------------------------------------------------------------------
+PRAYER_ICONS: dict[str, str] = {
+    "Fajr": "ph-cloud-moon",
+    "Dhuhr": "ph-sun",
+    "Asr": "ph-sun-dim",
+    "Maghrib": "ph-sun-horizon",
+    "Isha": "ph-moon-stars",
+}
+
+
+# ---------------------------------------------------------------------------
 # Audio file display labels
 # ---------------------------------------------------------------------------
 # Maqam names rendered with proper Turkish orthography. Filenames stay ASCII
@@ -322,6 +334,7 @@ def dashboard():
         prayer_times=times,
         iqamah_times=iqamah_times,
         prayer_names=PRAYER_NAMES,
+        prayer_icons=PRAYER_ICONS,
         methods=CALCULATION_METHODS,
         audio_files=audio_files,
         audio_files_by_prayer=audio_files_by_prayer,
