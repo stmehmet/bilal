@@ -214,8 +214,19 @@ def _play_on_speakers(
 
     if enabled:
         try:
+            # Build per-speaker volume overrides
+            speaker_volumes = {}
+            for name in enabled:
+                sv = speakers[name].get("volume")
+                if sv is not None:
+                    speaker_volumes[name] = sv
+
             devices = discover_chromecasts(timeout=8)
-            results = play_on_all(devices, enabled, media_url, volume=volume)
+            results = play_on_all(
+                devices, enabled, media_url,
+                volume=volume,
+                speaker_volumes=speaker_volumes or None,
+            )
             for name, ok in results.items():
                 status = "success" if ok else "FAILED"
                 logger.info("  %s -> %s", name, status)
