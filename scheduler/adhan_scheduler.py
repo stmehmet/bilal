@@ -170,13 +170,48 @@ def _resolve_audio_file(prayer_name: str, config: dict) -> str | None:
     return None
 
 
-def _play_on_speakers(media_url: str, config: dict, event_label: str) -> None:
-    """Play audio on all enabled Chromecast speakers and SmartThings devices."""
+def _play_on_speakers(
+    media_url: str,
+    config: dict,
+    event_label: str,
+    prayer_name: str | None = None,
+) -> None:
+    """Play audio on all enabled Chromecast speakers and SmartThings devices.
+
+    When *prayer_name* is given, each speaker's per-prayer schedule is checked
+    against today's weekday.  A missing ``schedule`` key means "all days" for
+    backward compatibility with configs that predate this feature.
+    """
     volume = config.get("volume", 0.5)
 
     # --- Chromecast playback ---
     speakers = config.get("speakers", {})
     enabled = [name for name, info in speakers.items() if info.get("enabled", False)]
+
+    # Per-speaker schedule filtering
+    if prayer_name and enabled:
+        tz_name = config.get("timezone", "UTC")
+        try:
+            today = datetime.datetime.now(ZoneInfo(tz_name)).weekday()
+        except Exception:
+            today = datetime.datetime.now(pytz.UTC).weekday()
+        scheduled = []
+        for name in enabled:
+            schedule = speakers[name].get("schedule")
+            if schedule is None:
+                # No schedule = play every day (backward compatible)
+                scheduled.append(name)
+            elif prayer_name in schedule:
+                days = schedule[prayer_name]
+                if days is None or today in days:
+                    scheduled.append(name)
+                else:
+                    logger.info("  %s skipped for %s (not scheduled today)", name, prayer_name)
+            else:
+                # Prayer not listed in schedule = play every day
+                scheduled.append(name)
+        enabled = scheduled
+
     if enabled:
         try:
             devices = discover_chromecasts(timeout=8)
@@ -217,7 +252,7 @@ def trigger_adhan(prayer_name: str) -> None:
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
 
     logger.info("Adhan for %s – playing %s", prayer_name, media_url)
-    _play_on_speakers(media_url, config, f"Adhan ({prayer_name})")
+    _play_on_speakers(media_url, config, f"Adhan ({prayer_name})", prayer_name=prayer_name)
 
 
 def trigger_iqamah(prayer_name: str) -> None:
@@ -245,7 +280,7 @@ def trigger_iqamah(prayer_name: str) -> None:
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
 
     logger.info("Iqamah for %s – playing %s", prayer_name, media_url)
-    _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})")
+    _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})", prayer_name=prayer_name)
 
 
 class AdhanSchedulerService:
