@@ -183,13 +183,13 @@ Using a named Docker volume instead of a bind mount means the data survives cont
 
 A bind mount from the host's `~bilal/bilal/audio/` directory to `/audio` inside both containers, **read-only**. Audio files are baked into the Docker image during build AND also accessible from the host for adding new recordings via SCP / git pull.
 
-File naming convention: `adhan_<prayer>_<muezzin>[_<maqam>].mp3`
+File naming convention: `adhan_<prayer>_<maqam>_<number>.mp3`
 
 - `<prayer>` — one of `fajr`, `dhuhr`, `asr`, `maghrib`, `isha`
-- `<muezzin>` — camelCase slug, e.g. `rec1`, `rec2`
-- `<maqam>` — optional, e.g. `saba`, `ussak`, `rast`, `segah`, `hicaz`
+- `<maqam>` — e.g. `saba`, `ussak`, `rast`, `segah`, `hicaz`
+- `<number>` — recording variant, e.g. `1`, `2`
 
-The `audio_display_label()` parser in `web/app.py` maps slugs to their Turkish orthography (`Recording 1`, `Uşşak`, etc.) via the `MUEZZIN_LABELS` and `MAQAM_LABELS` dictionaries. Unknown slugs fall through to a camelCase→Title Case conversion.
+The `audio_display_label()` parser in `web/app.py` maps maqam slugs to their Turkish orthography (`Uşşak`, `Segâh`, etc.) via the `MAQAM_LABELS` dictionary and appends the number. Display example: `adhan_fajr_saba_1.mp3` → "Saba 1".
 
 ### 2.6. Host OS services (Pi OS Lite)
 

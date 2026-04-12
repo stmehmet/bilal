@@ -89,10 +89,10 @@ def sample_config():
         "skip_prayers": [],
         "speakers": {},
         "adhan_audio_files": {
-            "Fajr": "adhan_fajr_rec2_saba.mp3",
-            "Dhuhr": "adhan_dhuhr_rec2_ussak.mp3",
-            "Asr": "adhan_asr_rec2_rast.mp3",
-            "Maghrib": "adhan_maghrib_rec2_segah.mp3",
-            "Isha": "adhan_isha_rec2_hicaz.mp3",
+            "Fajr": "adhan_fajr_saba_2.mp3",
+            "Dhuhr": "adhan_dhuhr_ussak_2.mp3",
+            "Asr": "adhan_asr_rast_2.mp3",
+            "Maghrib": "adhan_maghrib_segah_2.mp3",
+            "Isha": "adhan_isha_hicaz_2.mp3",
         },
     }

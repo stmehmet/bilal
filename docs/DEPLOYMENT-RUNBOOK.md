@@ -224,11 +224,11 @@ Tailscale's MagicDNS resolves this regardless of whether the Pi is on your LAN o
    - **Manual coordinates** (for when both fail, or you want exact control): type lat/lon in the numeric fields. Also fill in the City, Country, and Timezone text fields so the dashboard header matches. _Leaving these blank means the old values persist — this was a bug fixed in commit `c71306e`._
 3. **Calculation Method** — pick `ISNA` (North America default), `UmmAlQura` (Makkah), `MuslimWorldLeague` (Europe default), or whatever your community uses.
 4. **Per-prayer adhan audio** — each vakit dropdown is filtered to show only the recordings that match that prayer's traditional Ottoman maqam:
-   - Fajr: Saba | Recording 1, Saba | Recording 2
-   - Dhuhr: Uşşak | Recording 1, Uşşak | Recording 2
-   - Asr: Rast | Recording 1, Rast | Recording 2
-   - Maghrib: Segâh | Recording 1, Segâh | Recording 2
-   - Isha: Hicaz | Recording 1, Hicaz | Recording 2
+   - Fajr: Saba 1, Saba 2
+   - Dhuhr: Uşşak 1, Uşşak 2
+   - Asr: Rast 1, Rast 2
+   - Maghrib: Segâh 1, Segâh 2
+   - Isha: Hicaz 1, Hicaz 2
 5. **Volume** — start at 50% and adjust after the first real adhan plays.
 6. **Click Save Settings.** Page reloads with the new prayer times.
 
@@ -241,7 +241,7 @@ Tailscale's MagicDNS resolves this regardless of whether the Pi is on your LAN o
 
 ### 7.2. Optional: iqamah
 
-Currently commented out from the UX but the plumbing is all in place. If you add `iqamah_<muezzin>.mp3` files to `audio/`, the dashboard will pick them up in the iqamah dropdown (label parser already handles the `iqamah_<name>` pattern).
+Currently commented out from the UX but the plumbing is all in place. If you add `iqamah_<name>.mp3` files to `audio/`, the dashboard will pick them up in the iqamah dropdown.
 
 ---
 
@@ -305,7 +305,7 @@ Easiest: set one prayer time to 2 minutes in the future via the dashboard, save,
 
 ```
 docker compose logs scheduler | grep "Adhan for"
-# [adhan_scheduler] INFO: Adhan for Dhuhr – playing http://192.168.86.234:5000/audio/adhan_dhuhr_rec2_ussak.mp3
+# [adhan_scheduler] INFO: Adhan for Dhuhr – playing http://192.168.86.234:5000/audio/adhan_dhuhr_ussak_2.mp3
 ```
 
 ### 8.5. Reboot survival
