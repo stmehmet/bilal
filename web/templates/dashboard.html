@@ -379,29 +379,101 @@
           <i class="ph ph-magnifying-glass"></i> Discover Speakers
         </button>
       </div>
+      {# --- Global schedule template (apply to all) --- #}
+      {% if config.speakers %}
+      <details class="mb-4">
+        <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
+          <i class="ph ph-calendar-check"></i> Set schedule for all speakers
+        </summary>
+        <div class="mt-3 bg-slate-700/30 rounded-lg p-4">
+          <div class="grid grid-cols-5 gap-2 text-center mb-3" id="global-schedule">
+            {% for prayer in prayer_names %}
+            <div>
+              <div class="text-xs text-slate-400 mb-1">{{ prayer }}</div>
+              <input type="checkbox" class="global-prayer-toggle accent-emerald-500 w-4 h-4"
+                     data-prayer="{{ prayer }}" checked>
+              <div class="day-picker mt-2 hidden" data-prayer="{{ prayer }}">
+                {% for day_idx, day_label in [(0,'M'),(1,'T'),(2,'W'),(3,'T'),(4,'F'),(5,'S'),(6,'S')] %}
+                <button type="button"
+                        class="global-day-btn w-6 h-6 text-[10px] rounded-full bg-emerald-600 text-white m-0.5"
+                        data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="flex gap-2">
+            <button onclick="toggleGlobalDayPickers()"
+                    class="text-xs text-slate-400 hover:text-slate-300 underline">
+              Customize days
+            </button>
+            <button onclick="applyScheduleToAll()"
+                    class="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-1.5
+                           rounded-lg transition-colors inline-flex items-center gap-1">
+              <i class="ph ph-broadcast"></i> Apply to All
+            </button>
+          </div>
+        </div>
+      </details>
+      {% endif %}
+
       <div id="speakers-list">
         {% if config.speakers %}
         {% for name, info in config.speakers.items() %}
-        <div class="flex items-center justify-between bg-slate-700/50 rounded-lg px-4 py-3 mb-2">
-          <label class="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" class="speaker-toggle accent-emerald-500 w-4 h-4"
-                   data-speaker="{{ name }}"
-                   {% if info.enabled %}checked{% endif %}>
-            <div>
-              <span class="font-medium">{{ name }}</span>
-              {% if info.get('is_group') %}
-              <span class="ml-2 text-xs bg-purple-800/60 text-purple-300 px-2 py-0.5 rounded-full">Group</span>
-              {% endif %}
-              {% if info.get('model') %}
-              <span class="block text-xs text-slate-500">{{ info.model }}</span>
-              {% endif %}
+        <div class="bg-slate-700/50 rounded-lg px-4 py-3 mb-2">
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" class="speaker-toggle accent-emerald-500 w-4 h-4"
+                     data-speaker="{{ name }}"
+                     {% if info.enabled %}checked{% endif %}>
+              <div>
+                <span class="font-medium">{{ name }}</span>
+                {% if info.get('is_group') %}
+                <span class="ml-2 text-xs bg-purple-800/60 text-purple-300 px-2 py-0.5 rounded-full">Group</span>
+                {% endif %}
+                {% if info.get('model') %}
+                <span class="block text-xs text-slate-500">{{ info.model }}</span>
+                {% endif %}
+              </div>
+            </label>
+            <button onclick="testSpeaker('{{ name }}')"
+                    class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
+                           px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
+              <i class="ph ph-play"></i> Test
+            </button>
+          </div>
+          {# Per-speaker prayer schedule #}
+          <details class="mt-2">
+            <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
+              <i class="ph ph-calendar-check"></i> Prayer schedule
+            </summary>
+            <div class="mt-2 grid grid-cols-5 gap-2 text-center speaker-schedule" data-speaker="{{ name }}">
+              {% for prayer in prayer_names %}
+              {% set schedule = info.get('schedule') %}
+              {% set prayer_days = schedule.get(prayer) if schedule else None %}
+              {% set prayer_enabled = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (prayer_days | length > 0) %}
+              <div>
+                <div class="text-[10px] text-slate-500 mb-1">{{ prayer }}</div>
+                <input type="checkbox" class="speaker-prayer-toggle accent-emerald-500 w-3.5 h-3.5"
+                       data-speaker="{{ name }}" data-prayer="{{ prayer }}"
+                       {% if prayer_enabled %}checked{% endif %}>
+                <div class="day-picker mt-1 hidden" data-speaker="{{ name }}" data-prayer="{{ prayer }}">
+                  {% for day_idx, day_label in [(0,'M'),(1,'T'),(2,'W'),(3,'T'),(4,'F'),(5,'S'),(6,'S')] %}
+                  {% set day_active = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (day_idx in prayer_days) %}
+                  <button type="button"
+                          class="speaker-day-btn w-5 h-5 text-[9px] rounded-full m-0.5
+                                 {% if day_active %}bg-emerald-600 text-white{% else %}bg-slate-600 text-slate-400{% endif %}"
+                          data-speaker="{{ name }}" data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endfor %}
             </div>
-          </label>
-          <button onclick="testSpeaker('{{ name }}')"
-                  class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
-                         px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
-            <i class="ph ph-play"></i> Test
-          </button>
+            <button onclick="toggleSpeakerDayPickers('{{ name }}')"
+                    class="mt-2 text-xs text-slate-400 hover:text-slate-300 underline">
+              Customize days
+            </button>
+          </details>
         </div>
         {% endfor %}
         {% else %}
@@ -731,6 +803,114 @@
         });
       });
     });
+
+    // ── Per-speaker schedule ──────────────────────────────────────────────────
+    const ALL_DAYS = [0,1,2,3,4,5,6];
+
+    function toggleSpeakerDayPickers(speaker) {
+      document.querySelectorAll(`.speaker-schedule[data-speaker="${speaker}"] .day-picker`).forEach(el => {
+        el.classList.toggle('hidden');
+      });
+    }
+
+    function toggleGlobalDayPickers() {
+      document.querySelectorAll('#global-schedule .day-picker').forEach(el => {
+        el.classList.toggle('hidden');
+      });
+    }
+
+    // Per-speaker prayer toggle: enable/disable a prayer for this speaker
+    document.querySelectorAll('.speaker-prayer-toggle').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const speaker = cb.dataset.speaker;
+        const schedule = buildScheduleForSpeaker(speaker);
+        await fetch('/api/speakers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [speaker]: { schedule } }),
+        });
+      });
+    });
+
+    // Day button click: toggle a specific day for a prayer on a speaker
+    document.querySelectorAll('.speaker-day-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const isActive = btn.classList.contains('bg-emerald-600');
+        btn.classList.toggle('bg-emerald-600', !isActive);
+        btn.classList.toggle('text-white', !isActive);
+        btn.classList.toggle('bg-slate-600', isActive);
+        btn.classList.toggle('text-slate-400', isActive);
+        const speaker = btn.dataset.speaker;
+        const schedule = buildScheduleForSpeaker(speaker);
+        await fetch('/api/speakers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [speaker]: { schedule } }),
+        });
+      });
+    });
+
+    function buildScheduleForSpeaker(speaker) {
+      const schedule = {};
+      const container = document.querySelector(`.speaker-schedule[data-speaker="${speaker}"]`);
+      if (!container) return null;
+      const prayers = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
+      prayers.forEach(prayer => {
+        const toggle = container.querySelector(`.speaker-prayer-toggle[data-prayer="${prayer}"]`);
+        if (!toggle || !toggle.checked) {
+          schedule[prayer] = [];
+          return;
+        }
+        const dayBtns = container.querySelectorAll(`.speaker-day-btn[data-prayer="${prayer}"]`);
+        if (dayBtns.length === 0) {
+          schedule[prayer] = ALL_DAYS.slice();
+          return;
+        }
+        const days = [];
+        dayBtns.forEach(b => {
+          if (b.classList.contains('bg-emerald-600')) days.push(parseInt(b.dataset.day));
+        });
+        schedule[prayer] = days;
+      });
+      return schedule;
+    }
+
+    // Global day button toggle
+    document.querySelectorAll('.global-day-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('bg-emerald-600');
+        btn.classList.toggle('text-white');
+        btn.classList.toggle('bg-slate-600');
+        btn.classList.toggle('text-slate-400');
+      });
+    });
+
+    async function applyScheduleToAll() {
+      const schedule = {};
+      const prayers = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
+      prayers.forEach(prayer => {
+        const toggle = document.querySelector(`.global-prayer-toggle[data-prayer="${prayer}"]`);
+        if (!toggle || !toggle.checked) {
+          schedule[prayer] = [];
+          return;
+        }
+        const dayBtns = document.querySelectorAll(`.global-day-btn[data-prayer="${prayer}"]`);
+        const days = [];
+        dayBtns.forEach(b => {
+          if (b.classList.contains('bg-emerald-600')) days.push(parseInt(b.dataset.day));
+        });
+        schedule[prayer] = days.length > 0 ? days : ALL_DAYS.slice();
+      });
+      const resp = await fetch('/api/speakers/schedule/apply-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schedule }),
+      });
+      if (resp.ok) {
+        toast('Schedule applied to all speakers');
+        setTimeout(() => location.reload(), 1000);
+      } else toast('Failed to apply schedule', true);
+    }
 
     // ── Audio preview ─────────────────────────────────────────────────────────
     function previewAdhan(prayer) {
