@@ -211,4 +211,4 @@ bilal/
 
 ## License
 
-MIT
+[PolyForm Noncommercial 1.0.0](./LICENSE) — free for personal and non-commercial use. Commercial use requires written permission from the author.
