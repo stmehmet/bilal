@@ -59,14 +59,9 @@ APP_VERSION = _version_file.read_text().strip() if _version_file.exists() else "
 # ---------------------------------------------------------------------------
 # Audio file display labels
 # ---------------------------------------------------------------------------
-# Known muezzins and maqams rendered with proper Turkish orthography. Filenames
-# stay ASCII (so they work cleanly in URLs, shells, and filesystems), while the
-# display layer maps each ASCII slug to its real diacritical form.
-MUEZZIN_LABELS: dict[str, str] = {
-    "rec1": "Recording 1",
-    "rec2": "Recording 2",
-}
-
+# Maqam names rendered with proper Turkish orthography. Filenames stay ASCII
+# (clean URLs / shells / filesystems); the display layer maps each slug to
+# its diacritical form.
 MAQAM_LABELS: dict[str, str] = {
     "saba": "Saba",
     "ussak": "Uşşak",
@@ -76,58 +71,38 @@ MAQAM_LABELS: dict[str, str] = {
 }
 
 
-def _camel_to_title(s: str) -> str:
-    """Convert camelCase to Title Case: 'rec1' -> 'Recording 1'.
-
-    Used as a fallback for unknown muezzins/maqams not in the label tables.
-    """
-    out: list[str] = []
-    for i, c in enumerate(s):
-        if i > 0 and c.isupper():
-            out.append(" ")
-        out.append(c)
-    return "".join(out).title()
-
-
 def audio_display_label(filename: str) -> str:
     """Return a human-readable label for an audio file.
 
     Supported patterns:
 
-      * `adhan_<prayer>_<muezzin>[_<maqam>].mp3`
-          -> "<Maqam> | <Muezzin>" or "<Muezzin>"
-      * `iqamah_<name>.mp3`
-          -> "<Name>"  (e.g. "Recording 1", "Bell")
+      * ``adhan_<prayer>_<maqam>_<number>.mp3`` → "Saba 1", "Uşşak 2"
+      * ``adhan_<prayer>_<maqam>.mp3``           → "Saba"
+      * ``iqamah_<name>.mp3``                    → "Bell"
 
-    Known muezzins and maqams are looked up in MUEZZIN_LABELS and MAQAM_LABELS
-    so we get proper Turkish orthography (e.g. "Recording 1", "Uşşak").
-    Unknown values fall back to camelCase-to-Title-Case conversion.
-
-    Filenames that don't match either pattern fall back to a cleaned-up stem
-    (underscores -> spaces, each segment title-cased).
+    Maqam slugs are looked up in MAQAM_LABELS for Turkish orthography.
     """
-    stem = filename
-    if stem.endswith(".mp3"):
-        stem = stem[:-4]
+    stem = filename[:-4] if filename.endswith(".mp3") else filename
     parts = stem.split("_")
 
-    # adhan_<prayer>_<muezzin>[_<maqam>]
-    if len(parts) >= 3 and parts[0] == "adhan":
-        muezzin_slug = parts[2]
-        muezzin = MUEZZIN_LABELS.get(muezzin_slug, _camel_to_title(muezzin_slug))
-        if len(parts) >= 4 and parts[3]:
-            maqam_slug = parts[3]
-            maqam = MAQAM_LABELS.get(maqam_slug, _camel_to_title(maqam_slug))
-            return f"{maqam} | {muezzin}"
-        return muezzin
+    # adhan_<prayer>_<maqam>_<number>
+    if len(parts) >= 4 and parts[0] == "adhan":
+        maqam_slug = parts[2]
+        number = parts[3]
+        maqam = MAQAM_LABELS.get(maqam_slug, maqam_slug.title())
+        return f"{maqam} {number}"
 
-    # iqamah_<name>  (e.g. iqamah_bell, iqamah_rec1)
+    # adhan_<prayer>_<maqam> (no number)
+    if len(parts) == 3 and parts[0] == "adhan":
+        maqam_slug = parts[2]
+        return MAQAM_LABELS.get(maqam_slug, maqam_slug.title())
+
+    # iqamah_<name>
     if len(parts) >= 2 and parts[0] == "iqamah":
-        name_slug = parts[1]
-        return MUEZZIN_LABELS.get(name_slug, _camel_to_title(name_slug))
+        return parts[1].title()
 
-    # Fallback: replace underscores with spaces and title-case each word
-    return " ".join(_camel_to_title(p) for p in parts if p)
+    # Fallback
+    return " ".join(p.title() for p in parts if p)
 
 
 # Valid prayer slugs (lowercase) used in filenames and filtering.

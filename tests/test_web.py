@@ -257,8 +257,8 @@ class TestAudio:
         assert resp.status_code == 200
         data = resp.get_json()
         assert len(data["missing"]) == 5
-        assert "adhan_fajr_rec2_saba.mp3" in data["missing"]
-        assert "adhan_dhuhr_rec2_ussak.mp3" in data["missing"]
+        assert "adhan_fajr_saba_2.mp3" in data["missing"]
+        assert "adhan_dhuhr_ussak_2.mp3" in data["missing"]
 
 
 # ---------------------------------------------------------------------------
@@ -378,44 +378,41 @@ class TestGeocode:
 
 class TestAudioDisplayLabel:
     """The parser turns ASCII filenames into human-readable labels with proper
-    Turkish orthography for known muezzins and maqams."""
+    Turkish orthography for maqam names."""
 
     @pytest.mark.parametrize("filename,expected", [
-        # Known muezzin + known maqam (the bundled recordings)
-        ("adhan_fajr_rec1_saba.mp3",       "Saba | Recording 1"),
-        ("adhan_fajr_rec2_saba.mp3",    "Saba | Recording 2"),
-        ("adhan_dhuhr_rec1_ussak.mp3",     "Uşşak | Recording 1"),
-        ("adhan_dhuhr_rec2_ussak.mp3",  "Uşşak | Recording 2"),
-        ("adhan_asr_rec1_rast.mp3",        "Rast | Recording 1"),
-        ("adhan_asr_rec2_rast.mp3",     "Rast | Recording 2"),
-        ("adhan_maghrib_rec1_segah.mp3",   "Segâh | Recording 1"),
-        ("adhan_maghrib_rec2_segah.mp3","Segâh | Recording 2"),
-        ("adhan_isha_rec1_hicaz.mp3",      "Hicaz | Recording 1"),
-        ("adhan_isha_rec2_hicaz.mp3",   "Hicaz | Recording 2"),
-        # Unknown muezzin — camelCase fallback
-        ("adhan_fajr_abdulbasit.mp3",             "Abdulbasit"),
-        # Unknown muezzin + unknown maqam — both fall back
-        ("adhan_fajr_someone_unknownMaqam.mp3",   "Unknown Maqam | Someone"),
-        # iqamah files — known muezzin uses Turkish label table
-        ("iqamah_rec1.mp3",                 "Recording 1"),
-        ("iqamah_rec2.mp3",              "Recording 2"),
-        ("iqamah_bell.mp3",                        "Bell"),
+        # Bundled recordings: adhan_<prayer>_<maqam>_<number>
+        ("adhan_fajr_saba_1.mp3",        "Saba 1"),
+        ("adhan_fajr_saba_2.mp3",        "Saba 2"),
+        ("adhan_dhuhr_ussak_1.mp3",      "Uşşak 1"),
+        ("adhan_dhuhr_ussak_2.mp3",      "Uşşak 2"),
+        ("adhan_asr_rast_1.mp3",         "Rast 1"),
+        ("adhan_asr_rast_2.mp3",         "Rast 2"),
+        ("adhan_maghrib_segah_1.mp3",    "Segâh 1"),
+        ("adhan_maghrib_segah_2.mp3",    "Segâh 2"),
+        ("adhan_isha_hicaz_1.mp3",       "Hicaz 1"),
+        ("adhan_isha_hicaz_2.mp3",       "Hicaz 2"),
+        # Three-part (no number) — maqam only
+        ("adhan_fajr_saba.mp3",          "Saba"),
+        # Unknown maqam — title-case fallback
+        ("adhan_fajr_bayati_3.mp3",      "Bayati 3"),
+        # iqamah files
+        ("iqamah_bell.mp3",              "Bell"),
         # Totally unrecognised filename — cleaned-up stem
-        ("bells.mp3",                              "Bells"),
+        ("bells.mp3",                    "Bells"),
     ])
     def test_label_parsing(self, filename, expected):
         from app import audio_display_label
         assert audio_display_label(filename) == expected
 
     @pytest.mark.parametrize("filename,category,prayer", [
-        ("adhan_fajr_rec1_saba.mp3",     "adhan",  "fajr"),
-        ("adhan_dhuhr_rec2_ussak.mp3","adhan",  "dhuhr"),
-        ("adhan_isha_rec1_hicaz.mp3",    "adhan",  "isha"),
-        ("iqamah_bell.mp3",                     "iqamah", None),
-        ("iqamah_rec1.mp3",              "iqamah", None),
-        ("bells.mp3",                           "other",  None),
-        ("adhan_fajr.mp3",                      "adhan",  "fajr"),  # missing muezzin still classified by prayer
-        ("adhan_notaprayer_someone.mp3",        "other",  None),
+        ("adhan_fajr_saba_1.mp3",        "adhan",  "fajr"),
+        ("adhan_dhuhr_ussak_2.mp3",      "adhan",  "dhuhr"),
+        ("adhan_isha_hicaz_1.mp3",       "adhan",  "isha"),
+        ("iqamah_bell.mp3",              "iqamah", None),
+        ("bells.mp3",                    "other",  None),
+        ("adhan_fajr.mp3",              "adhan",  "fajr"),
+        ("adhan_notaprayer_someone.mp3", "other",  None),
     ])
     def test_audio_file_category(self, filename, category, prayer):
         from app import _audio_file_category
@@ -427,16 +424,15 @@ class TestAudioFileFiltering:
     correctly from the real AUDIO_DIR contents."""
 
     def test_audio_files_by_prayer_splits_correctly(self, tmp_path, monkeypatch):
-        # Seed a fake AUDIO_DIR with one file per prayer per muezzin
         audio_dir = tmp_path / "audio"
         audio_dir.mkdir()
         for name in [
-            "adhan_fajr_rec1_saba.mp3",
-            "adhan_fajr_rec2_saba.mp3",
-            "adhan_dhuhr_rec1_ussak.mp3",
-            "adhan_asr_rec2_rast.mp3",
-            "adhan_maghrib_rec1_segah.mp3",
-            "adhan_isha_rec2_hicaz.mp3",
+            "adhan_fajr_saba_1.mp3",
+            "adhan_fajr_saba_2.mp3",
+            "adhan_dhuhr_ussak_1.mp3",
+            "adhan_asr_rast_2.mp3",
+            "adhan_maghrib_segah_1.mp3",
+            "adhan_isha_hicaz_2.mp3",
             "iqamah_bell.mp3",
             "random_noise.mp3",
         ]:
@@ -447,13 +443,11 @@ class TestAudioFileFiltering:
 
         by_prayer = web_app._build_audio_files_by_prayer()
 
-        # Fajr has both muezzins in Saba
         fajr_filenames = [e["filename"] for e in by_prayer["Fajr"]]
-        assert "adhan_fajr_rec1_saba.mp3" in fajr_filenames
-        assert "adhan_fajr_rec2_saba.mp3" in fajr_filenames
+        assert "adhan_fajr_saba_1.mp3" in fajr_filenames
+        assert "adhan_fajr_saba_2.mp3" in fajr_filenames
         assert len(fajr_filenames) == 2
 
-        # Dhuhr has only Recording 1 in Uşşak; Asr only Recording 2
         assert len(by_prayer["Dhuhr"]) == 1
         assert "ussak" in by_prayer["Dhuhr"][0]["filename"]
         assert len(by_prayer["Asr"]) == 1
