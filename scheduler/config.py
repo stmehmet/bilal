@@ -63,41 +63,33 @@ CALCULATION_METHODS = [
 
 PRAYER_NAMES = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
-# Filename migration map: old filenames → new filenames.
-# Applied automatically on load so deployed units migrate seamlessly.
-_FILENAME_MIGRATIONS: dict[str, str] = {
-    # rec1/rec2 intermediate names → final names
-    "adhan_fajr_rec1_saba.mp3": "adhan_fajr_saba_1.mp3",
-    "adhan_fajr_rec2_saba.mp3": "adhan_fajr_saba_2.mp3",
-    "adhan_dhuhr_rec1_ussak.mp3": "adhan_dhuhr_ussak_1.mp3",
-    "adhan_dhuhr_rec2_ussak.mp3": "adhan_dhuhr_ussak_2.mp3",
-    "adhan_asr_rec1_rast.mp3": "adhan_asr_rast_1.mp3",
-    "adhan_asr_rec2_rast.mp3": "adhan_asr_rast_2.mp3",
-    "adhan_maghrib_rec1_segah.mp3": "adhan_maghrib_segah_1.mp3",
-    "adhan_maghrib_rec2_segah.mp3": "adhan_maghrib_segah_2.mp3",
-    "adhan_isha_rec1_hicaz.mp3": "adhan_isha_hicaz_1.mp3",
-    "adhan_isha_rec2_hicaz.mp3": "adhan_isha_hicaz_2.mp3",
-    # Legacy names from pre-rename deployments → final names
-    "adhan_fajr_ismailCosar_saba.mp3": "adhan_fajr_saba_1.mp3",
-    "adhan_fajr_nurettinOkumus_saba.mp3": "adhan_fajr_saba_2.mp3",
-    "adhan_dhuhr_ismailCosar_ussak.mp3": "adhan_dhuhr_ussak_1.mp3",
-    "adhan_dhuhr_nurettinOkumus_ussak.mp3": "adhan_dhuhr_ussak_2.mp3",
-    "adhan_asr_ismailCosar_rast.mp3": "adhan_asr_rast_1.mp3",
-    "adhan_asr_nurettinOkumus_rast.mp3": "adhan_asr_rast_2.mp3",
-    "adhan_maghrib_ismailCosar_segah.mp3": "adhan_maghrib_segah_1.mp3",
-    "adhan_maghrib_nurettinOkumus_segah.mp3": "adhan_maghrib_segah_2.mp3",
-    "adhan_isha_ismailCosar_hicaz.mp3": "adhan_isha_hicaz_1.mp3",
-    "adhan_isha_nurettinOkumus_hicaz.mp3": "adhan_isha_hicaz_2.mp3",
-}
+# Known maqam slugs used in the current naming scheme.
+_KNOWN_MAQAMS = {"saba", "ussak", "rast", "segah", "hicaz"}
 
 
 def _migrate_audio_filenames(config: dict) -> bool:
-    """Migrate old audio filenames to new scheme. Returns True if changed."""
+    """Migrate old audio filenames to the current naming scheme.
+
+    Detects filenames that use the old ``adhan_<prayer>_<tag>_<maqam>.mp3``
+    layout (where maqam is the 4th segment) and rewrites them to the current
+    ``adhan_<prayer>_<maqam>_1.mp3`` layout.  The user can then pick the
+    correct variant from the dashboard dropdown.
+
+    Returns True if any filename was changed.
+    """
     files = config.get("adhan_audio_files", {})
     changed = False
     for prayer, filename in list(files.items()):
-        if filename in _FILENAME_MIGRATIONS:
-            files[prayer] = _FILENAME_MIGRATIONS[filename]
+        if not filename.endswith(".mp3"):
+            continue
+        parts = filename[:-4].split("_")  # strip .mp3, split
+        # Current format: adhan_<prayer>_<maqam>_<number> — nothing to do
+        if len(parts) == 4 and parts[2] in _KNOWN_MAQAMS and parts[3].isdigit():
+            continue
+        # Old format: adhan_<prayer>_<tag>_<maqam> where maqam is in position 3
+        if len(parts) == 4 and parts[3] in _KNOWN_MAQAMS and parts[2] not in _KNOWN_MAQAMS:
+            new_name = f"adhan_{parts[1]}_{parts[3]}_1.mp3"
+            files[prayer] = new_name
             changed = True
     if changed:
         logger.info("Migrated audio filenames to new naming scheme")
