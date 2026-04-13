@@ -221,7 +221,14 @@ def _play_on_speakers(
                 if sv is not None:
                     speaker_volumes[name] = sv
 
-            devices = discover_chromecasts(timeout=8)
+            devices = discover_chromecasts(timeout=15)
+
+            # Retry discovery if any enabled speakers weren't found
+            missing = [n for n in enabled if n not in devices]
+            if missing:
+                logger.info("  Retrying discovery for missing speakers: %s", missing)
+                devices = discover_chromecasts(timeout=15, use_cache=False)
+
             results = play_on_all(
                 devices, enabled, media_url,
                 volume=volume,
