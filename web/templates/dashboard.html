@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bilal – Dashboard</title>
+  <title>Bilâl – Dashboard</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='minaret-100.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='minaret-100.png') }}">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -26,7 +26,7 @@
            alt="Minaret" width="48" height="48"
            class="w-12 h-12 flex-shrink-0">
       <div>
-        <h1 class="font-brand text-4xl font-bold text-emerald-400 leading-none">Bilal</h1>
+        <h1 class="font-brand text-4xl font-bold text-emerald-400 leading-none">Bilâl</h1>
         <p class="text-slate-400 text-sm">
           {{ config.city }}, {{ config.country }}
           <span class="text-slate-500 ml-2">{{ config.timezone }}</span>
@@ -301,6 +301,54 @@
       </button>
     </section>
 
+    <!-- Friday Sela -->
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
+            <i class="ph ph-star-four"></i> Friday Sela
+          </h2>
+          <p class="text-slate-400 text-sm mt-1">Plays before Jummah (Friday Dhuhr) only.</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="friday-sela-enabled" class="sr-only peer"
+                 {% if config.friday_sela_enabled %}checked{% endif %}>
+          <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer
+                      peer-checked:after:translate-x-full peer-checked:after:border-white
+                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
+                      peer-checked:bg-emerald-600"></div>
+        </label>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Audio</label>
+          <select id="friday-sela-audio-file"
+                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
+            {% for f in audio_files %}
+            <option value="{{ f.filename }}" {{ 'selected' if f.filename == config.friday_sela_audio_file else '' }}>
+              {{ f.label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 text-sm mb-1">Minutes before Dhuhr</label>
+          <input type="number" min="1" max="120"
+                 id="friday-sela-offset"
+                 value="{{ config.friday_sela_offset }}"
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                        text-white text-center outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+      </div>
+      <button onclick="saveFridaySela()"
+              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
+                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
+        <i class="ph ph-floppy-disk"></i> Save Friday Sela
+      </button>
+    </section>
+
     <!-- Do Not Disturb -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
@@ -473,47 +521,6 @@
       </div>
     </section>
 
-    <!-- SmartThings Integration -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
-        <i class="ph ph-devices"></i> SmartThings
-      </h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Token</label>
-          <input id="st-token" type="password" placeholder="Personal Access Token"
-                 value="{{ config.smartthings_token }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-        </div>
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Device ID</label>
-          <div class="flex flex-wrap gap-2">
-            <input id="st-device" type="text" placeholder="Device UUID"
-                   value="{{ config.smartthings_device_id }}"
-                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
-                    class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
-                           transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed
-                           inline-flex items-center gap-1.5"
-                    title="Enter a token first to browse devices">
-              <i class="ph ph-list-magnifying-glass"></i> Browse
-            </button>
-          </div>
-          <select id="st-device-select" onchange="selectSmartThingsDevice()"
-                  class="hidden mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2
-                         text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          </select>
-        </div>
-      </div>
-      <button onclick="saveSettings()"
-              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
-        <i class="ph ph-floppy-disk"></i> Save SmartThings
-      </button>
-    </section>
-
     <!-- WiFi Configuration -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
@@ -594,40 +601,6 @@
     setInterval(updateCountdown, 1000);
     {% endif %}
 
-    // ── SmartThings Device Browser ──────────────────────────────────────────
-    async function browseSmartThingsDevices() {
-      const btn = document.getElementById('st-browse-btn');
-      const token = document.getElementById('st-token').value.trim();
-      if (!token) { toast('Enter a SmartThings token first', true); return; }
-      btn.disabled = true;
-      btn.textContent = 'Loading...';
-      try {
-        const resp = await fetch('/api/smartthings/devices', { method: 'POST' });
-        if (!resp.ok) { toast('Failed to list devices', true); return; }
-        const data = await resp.json();
-        const sel = document.getElementById('st-device-select');
-        sel.innerHTML = '<option value="">-- Select a device --</option>';
-        data.devices.forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d.device_id;
-          opt.textContent = d.label + (d.type ? ` (${d.type})` : '');
-          sel.appendChild(opt);
-        });
-        sel.classList.remove('hidden');
-        if (data.devices.length === 0) toast('No devices found', true);
-      } catch (e) {
-        toast('Error browsing devices: ' + e.message, true);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Browse';
-      }
-    }
-
-    function selectSmartThingsDevice() {
-      const sel = document.getElementById('st-device-select');
-      if (sel.value) document.getElementById('st-device').value = sel.value;
-    }
-
     // ── Settings ──────────────────────────────────────────────────────────────
     async function saveSettings() {
       const skipPrayers = [];
@@ -650,8 +623,6 @@
         calculation_method: document.getElementById('calc-method').value,
         adhan_audio_files: adhanAudioFiles,
         volume: parseInt(document.getElementById('volume').value) / 100,
-        smartthings_token: document.getElementById('st-token').value,
-        smartthings_device_id: document.getElementById('st-device').value,
         skip_prayers: skipPrayers,
       };
       const resp = await fetch('/api/config', {
@@ -694,6 +665,21 @@
     }
 
     // ── Do Not Disturb ────────────────────────────────────────────────────────
+    async function saveFridaySela() {
+      const body = {
+        friday_sela_enabled: document.getElementById('friday-sela-enabled').checked,
+        friday_sela_audio_file: document.getElementById('friday-sela-audio-file').value,
+        friday_sela_offset: parseInt(document.getElementById('friday-sela-offset').value) || 45,
+      };
+      const resp = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (resp.ok) toast('Friday Sela settings saved!');
+      else toast('Failed to save Friday Sela settings', true);
+    }
+
     async function saveDND() {
       const body = {
         dnd_enabled: document.getElementById('dnd-enabled').checked,

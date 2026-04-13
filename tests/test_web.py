@@ -161,26 +161,6 @@ class TestSpeakers:
 # WiFi
 # ---------------------------------------------------------------------------
 
-class TestSmartThings:
-    def test_smartthings_devices_no_token_returns_400(self, logged_in_client):
-        resp = logged_in_client.post("/api/smartthings/devices")
-        assert resp.status_code == 400
-
-    @patch("app.st_list_devices")
-    def test_smartthings_devices_returns_list(self, mock_list, logged_in_client):
-        # Set a token in config first
-        logged_in_client.post("/api/config", json={"smartthings_token": "fake-token"})
-        mock_list.return_value = [
-            {"deviceId": "abc-123", "label": "Family Hub", "name": "Fridge", "deviceTypeName": "Samsung"},
-        ]
-        resp = logged_in_client.post("/api/smartthings/devices")
-        assert resp.status_code == 200
-        devices = resp.get_json()["devices"]
-        assert len(devices) == 1
-        assert devices[0]["device_id"] == "abc-123"
-        assert devices[0]["label"] == "Family Hub"
-
-
 class TestWiFi:
     @patch("subprocess.run")
     def test_wifi_networks_returns_parsed_list(self, mock_run, logged_in_client):
@@ -382,8 +362,8 @@ class TestAudioDisplayLabel:
 
     @pytest.mark.parametrize("filename,expected", [
         # Bundled recordings: adhan_<prayer>_<maqam>_<number>
-        ("adhan_fajr_saba_1.mp3",        "Saba 1"),
-        ("adhan_fajr_saba_2.mp3",        "Saba 2"),
+        ("adhan_fajr_saba_1.mp3",        "Sabâ 1"),
+        ("adhan_fajr_saba_2.mp3",        "Sabâ 2"),
         ("adhan_dhuhr_ussak_1.mp3",      "Uşşak 1"),
         ("adhan_dhuhr_ussak_2.mp3",      "Uşşak 2"),
         ("adhan_asr_rast_1.mp3",         "Rast 1"),
@@ -393,7 +373,7 @@ class TestAudioDisplayLabel:
         ("adhan_isha_hicaz_1.mp3",       "Hicaz 1"),
         ("adhan_isha_hicaz_2.mp3",       "Hicaz 2"),
         # Three-part (no number) — maqam only
-        ("adhan_fajr_saba.mp3",          "Saba"),
+        ("adhan_fajr_saba.mp3",          "Sabâ"),
         # Unknown maqam — title-case fallback
         ("adhan_fajr_bayati_3.mp3",      "Bayati 3"),
         # iqamah files
@@ -583,4 +563,43 @@ class TestSpeakerSchedule:
         })
         config = cfg.load_config()
         assert "volume" not in config["speakers"]["Office"]
+
+
+# ---------------------------------------------------------------------------
+# Friday Sela
+# ---------------------------------------------------------------------------
+
+class TestFridaySela:
+    """Friday Sela config save and validation."""
+
+    def test_save_friday_sela_settings(self, logged_in_client, sample_config):
+        cfg.save_config(sample_config)
+        resp = logged_in_client.post("/api/config", json={
+            "friday_sela_enabled": True,
+            "friday_sela_audio_file": "sela_cuma_huseyni.mp3",
+            "friday_sela_offset": 45,
+        })
+        assert resp.status_code == 200
+        config = cfg.load_config()
+        assert config["friday_sela_enabled"] is True
+        assert config["friday_sela_audio_file"] == "sela_cuma_huseyni.mp3"
+        assert config["friday_sela_offset"] == 45
+
+    def test_friday_sela_offset_clamped(self, logged_in_client, sample_config):
+        cfg.save_config(sample_config)
+        logged_in_client.post("/api/config", json={"friday_sela_offset": 200})
+        config = cfg.load_config()
+        assert config["friday_sela_offset"] == 120
+
+        logged_in_client.post("/api/config", json={"friday_sela_offset": 0})
+        config = cfg.load_config()
+        assert config["friday_sela_offset"] == 1
+
+    def test_sela_audio_label(self):
+        from app import audio_display_label
+        assert audio_display_label("sela_cuma_huseyni.mp3") == "Cuma Hüseynî"
+
+    def test_saba_orthography_fix(self):
+        from app import audio_display_label
+        assert audio_display_label("adhan_fajr_saba_1.mp3") == "Sabâ 1"
 

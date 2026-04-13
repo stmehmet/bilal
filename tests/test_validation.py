@@ -339,16 +339,6 @@ class TestSystemStatus:
 # ---------------------------------------------------------------------------
 
 class TestConfigExportImport:
-    def test_export_redacts_smartthings_token(self, logged_in_client):
-        logged_in_client.post(
-            "/api/config",
-            json={"smartthings_token": "secret-token-123"},
-        )
-        resp = logged_in_client.get("/api/config/export")
-        assert resp.status_code == 200
-        data = resp.get_json()
-        assert data["smartthings_token"] == "***redacted***"
-
     def test_export_has_download_header(self, logged_in_client):
         resp = logged_in_client.get("/api/config/export")
         assert "attachment" in resp.headers.get("Content-Disposition", "")
@@ -377,11 +367,11 @@ class TestConfigExportImport:
     def test_import_ignores_unsafe_keys(self, logged_in_client):
         resp = logged_in_client.post(
             "/api/config/import",
-            json={"smartthings_token": "steal-me", "city": "Test"},
+            json={"secret_key": "steal-me", "city": "Test"},
         )
         assert resp.status_code == 200
         data = resp.get_json()
-        # Only 'city' should be imported, not 'smartthings_token'
+        # Only 'city' should be imported, not unsafe keys
         assert data["keys_imported"] == 1
 
 
