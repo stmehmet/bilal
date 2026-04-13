@@ -303,6 +303,30 @@ def trigger_iqamah(prayer_name: str) -> None:
     _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})", prayer_name=prayer_name)
 
 
+def trigger_friday_sela() -> None:
+    """Called by the scheduler before Friday Dhuhr to play the Sela."""
+    config = load_config()
+
+    if not config.get("friday_sela_enabled", False):
+        return
+
+    if _is_dnd_active(config):
+        logger.info("Skipping Friday Sela – Do Not Disturb is active")
+        return
+
+    audio_file = config.get("friday_sela_audio_file", "sela_cuma_huseyni.mp3")
+    if not (AUDIO_DIR / audio_file).is_file():
+        logger.warning("Friday Sela audio file missing: %s, skipping", audio_file)
+        return
+
+    local_ip = _get_local_ip()
+    web_port = os.getenv("WEB_PORT", "5000")
+    media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
+
+    logger.info("Friday Sela – playing %s", media_url)
+    _play_on_speakers(media_url, config, "Friday Sela", prayer_name="Dhuhr")
+
+
 def _prewarm_speakers() -> None:
     """Connect to all enabled speakers to wake them from sleep.
 
@@ -457,6 +481,43 @@ class AdhanSchedulerService:
                 )
                 self._job_ids.append(job_id)
                 logger.info("Scheduled iqamah %s at %s", prayer, iq_time.strftime("%H:%M:%S"))
+
+        # --- Friday Sela job (before Jummah Dhuhr) ---
+        if config.get("friday_sela_enabled", False) and now.weekday() == 4:
+            dhuhr_time = times.get("Dhuhr")
+            offset = config.get("friday_sela_offset", 45)
+            if dhuhr_time:
+                sela_time = dhuhr_time - datetime.timedelta(minutes=offset)
+                if sela_time > now and sela_time < dhuhr_time:
+                    # Pre-warm 2 minutes before sela
+                    pw_time = sela_time - datetime.timedelta(minutes=2)
+                    if pw_time > now:
+                        pw_id = "prewarm_friday_sela"
+                        self.scheduler.add_job(
+                            _prewarm_speakers,
+                            "date",
+                            run_date=pw_time,
+                            id=pw_id,
+                            replace_existing=True,
+                            misfire_grace_time=120,
+                        )
+                        self._job_ids.append(pw_id)
+
+                    job_id = "friday_sela"
+                    self.scheduler.add_job(
+                        trigger_friday_sela,
+                        "date",
+                        run_date=sela_time,
+                        id=job_id,
+                        replace_existing=True,
+                        misfire_grace_time=300,
+                    )
+                    self._job_ids.append(job_id)
+                    logger.info(
+                        "Scheduled Friday Sela at %s (%d min before Dhuhr)",
+                        sela_time.strftime("%H:%M:%S"),
+                        offset,
+                    )
 
     def stop(self) -> None:
         self.scheduler.shutdown(wait=False)

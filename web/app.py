@@ -75,11 +75,12 @@ PRAYER_ICONS: dict[str, str] = {
 # (clean URLs / shells / filesystems); the display layer maps each slug to
 # its diacritical form.
 MAQAM_LABELS: dict[str, str] = {
-    "saba": "Saba",
+    "saba": "Sabâ",
     "ussak": "Uşşak",
     "rast": "Rast",
     "segah": "Segâh",
     "hicaz": "Hicaz",
+    "huseyni": "Hüseynî",
 }
 
 
@@ -112,6 +113,12 @@ def audio_display_label(filename: str) -> str:
     # iqamah_<name>
     if len(parts) >= 2 and parts[0] == "iqamah":
         return parts[1].title()
+
+    # sela_<occasion>_<maqam>
+    if len(parts) >= 3 and parts[0] == "sela":
+        occasion = parts[1].title()
+        maqam = MAQAM_LABELS.get(parts[2], parts[2].title())
+        return f"{occasion} {maqam}"
 
     # Fallback
     return " ".join(p.title() for p in parts if p)
@@ -466,6 +473,18 @@ def update_config():
         config["iqamah_enabled"] = bool(data["iqamah_enabled"])
     if "iqamah_audio_file" in data:
         config["iqamah_audio_file"] = data["iqamah_audio_file"]
+
+    # Friday Sela
+    if "friday_sela_enabled" in data:
+        config["friday_sela_enabled"] = bool(data["friday_sela_enabled"])
+    if "friday_sela_audio_file" in data:
+        config["friday_sela_audio_file"] = data["friday_sela_audio_file"]
+    if "friday_sela_offset" in data:
+        try:
+            offset = int(data["friday_sela_offset"])
+            config["friday_sela_offset"] = max(1, min(120, offset))
+        except (TypeError, ValueError):
+            pass
 
     # Do Not Disturb
     if "dnd_enabled" in data:
