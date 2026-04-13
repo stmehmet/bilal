@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "iqamah_audio_file": "iqamah_bell.mp3",
     # Friday Sela — plays before Jummah (Friday Dhuhr) only
     "friday_sela_enabled": False,
-    "friday_sela_audio_file": "sela_cuma_huseyni.mp3",
+    "friday_sela_audio_file": "sela_cuma_huseyni_1.mp3",
     "friday_sela_offset": 45,  # minutes before Dhuhr
     # Do Not Disturb (mute adhan during these hours)
     "dnd_enabled": False,

@@ -597,7 +597,7 @@ class TestFridaySela:
 
     def test_sela_audio_label(self):
         from app import audio_display_label
-        assert audio_display_label("sela_cuma_huseyni.mp3") == "Cuma Hüseynî"
+        assert audio_display_label("sela_cuma_huseyni_1.mp3") == "Hüseynî 1"
 
     def test_saba_orthography_fix(self):
         from app import audio_display_label
