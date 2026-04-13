@@ -136,14 +136,14 @@
           <label class="block text-slate-400 text-sm mb-1">Location</label>
 
           <!-- Coordinates (source of truth for prayer calculation) -->
-          <div class="flex gap-2">
+          <div class="flex gap-2 min-w-0">
             <input id="lat" type="number" step="any" placeholder="Latitude"
                    value="{{ config.latitude or '' }}"
-                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
             <input id="lon" type="number" step="any" placeholder="Longitude"
                    value="{{ config.longitude or '' }}"
-                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
           </div>
 
