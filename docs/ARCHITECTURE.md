@@ -21,7 +21,7 @@ For deployment mechanics, see [`DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md)
 
 ## 1. System overview
 
-Bilal is a **single-purpose appliance** that runs on a Raspberry Pi inside a private home, computes daily Islamic prayer times from the occupant's location, and plays the call-to-prayer (adhan) audio through Google Nest / Google Home / Chromecast speakers at the correct local moment. It has a small web dashboard for configuration and is designed to be **gifted**: the maintainer flashes a Pi, hands it to a family member, and can continue to push bug fixes and features remotely without the recipient ever touching the hardware.
+Bilal is a **single-purpose appliance** that runs on a Raspberry Pi inside a private home, computes daily Islamic prayer times from the occupant's location, and plays the call-to-prayer (adhan) audio through Google Nest / Google Home / Chromecast speakers at the correct local moment. It has a small web dashboard for configuration and is designed to be **gifted**: the maintainer flashes a Pi, hands it to a recipient, and can continue to push bug fixes and features remotely without the recipient ever touching the hardware.
 
 The "gift-fleet model" is the organising principle. Every design choice has to survive the question:
 
@@ -699,7 +699,7 @@ The separation is deliberate: the maintainer never needs to touch the recipient'
 | Geocoding | OpenStreetMap Nominatim | Free, no API key, worldwide coverage, privacy-respecting |
 | Timezone-from-coords | timeapi.io | Free, no API key, IANA names |
 | CI/CD | GitHub Actions (buildx multi-arch) | Integrates with GHCR, free for public/private repos on free tier |
-| Image registry | GHCR (ghcr.io/stmehmet) | Tied to repo, uses `GITHUB_TOKEN` in CI, classic PAT on Pi for pulls |
+| Image registry | GHCR | Tied to repo, uses `GITHUB_TOKEN` in CI, public packages for pulls |
 | State persistence | Flat JSON on Docker named volume | Simple, inspectable, no schema migration |
 | Password hashing | Werkzeug `generate_password_hash` (bcrypt) | Standard, well-tested, no extra deps |
 

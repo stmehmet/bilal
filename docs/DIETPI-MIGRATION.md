@@ -147,7 +147,7 @@ Run through this on a fresh DietPi image on a real Pi:
 - [ ] Add a second WiFi network (the whole point of the gift-fleet model) — test both the nmcli path and the wpa_supplicant path
 - [ ] Compare boot time, RAM usage, and disk usage against Pi OS Lite baseline
 - [ ] Document every tweak needed in an updated runbook
-- [ ] Ship one gift unit with DietPi to a willing family member for a 30-day stability test before converting the whole fleet
+- [ ] Ship one gift unit with DietPi for a 30-day stability test before converting the whole fleet
 
 ---
 

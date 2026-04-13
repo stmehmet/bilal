@@ -92,10 +92,10 @@ Open `http://<pi-ip-address>:5000` in your browser. On first visit, you'll be as
 
 ## Gifting a Pi
 
-The end-to-end recipe for assembling a unit to hand off to a family member:
+The end-to-end recipe for assembling a gift unit:
 
 1. **Flash the SD card** with Raspberry Pi OS 64-bit Lite using Raspberry Pi Imager. In advanced options, preconfigure:
-   - Hostname: `bilal-<name>` (e.g. `bilal-inlaws`)
+   - Hostname: `bilal-<location>` (e.g. `bilal-home`)
    - Username / password
    - Your own public SSH key (optional — Tailscale SSH is the primary remote path)
    - Locale + timezone

@@ -109,7 +109,7 @@ Open **Raspberry Pi Imager**, click **Edit Settings**, then:
 
 | Field | Value |
 |-------|-------|
-| Set hostname | `bilal-<recipient>` — e.g. `bilal-dev`, `bilal-inlaws`, `bilal-brother` |
+| Set hostname | `bilal-<location>` — e.g. `bilal-dev`, `bilal-home`, `bilal-office` |
 | Set username and password | Username: `bilal` (matches the ACL and docs throughout). Password: anything; you'll rarely type it because Tailscale SSH bypasses OpenSSH. |
 | Configure wireless LAN | Enter **your own WiFi** so the Pi joins the network on first boot. You'll add the recipient's network later via `nmcli`. |
 | Wireless LAN country | Your country code |
@@ -220,7 +220,7 @@ Tailscale's MagicDNS resolves this regardless of whether the Pi is on your LAN o
 1. **Create admin password** (first-visit only). Pick something strong — at least 8 characters. This gates the dashboard forever after.
 2. **Location** — three paths, in order of preference:
    - **Auto-detect from IP** (primary): clicks once, reads your public IP, fills lat/lon/city/country/timezone. Good for local setup.
-   - **Wrong location? Look up by address** (fallback when IP is wrong — VPN, Tailscale exit node, or ISP geolocating you to another city): expand the collapsible, type a free-text address like `Austin, TX`, click **Look Up**. Status line shows the resolved city/country/timezone/coordinates. Uses OpenStreetMap's Nominatim + timeapi.io. Free, no API keys.
+   - **Wrong location? Look up by address** (fallback when IP is wrong — VPN, Tailscale exit node, or ISP geolocating you to another city): expand the collapsible, type a free-text address (e.g. a city name), click **Look Up**. Status line shows the resolved city/country/timezone/coordinates. Uses OpenStreetMap's Nominatim + timeapi.io. Free, no API keys.
    - **Manual coordinates** (for when both fail, or you want exact control): type lat/lon in the numeric fields. Also fill in the City, Country, and Timezone text fields so the dashboard header matches. _Leaving these blank means the old values persist — this was a bug fixed in commit `c71306e`._
 3. **Calculation Method** — pick `ISNA` (North America default), `UmmAlQura` (Makkah), `MuslimWorldLeague` (Europe default), or whatever your community uses.
 4. **Per-prayer adhan audio** — each vakit dropdown is filtered to show only the recordings that match that prayer's traditional Ottoman maqam:
@@ -349,7 +349,7 @@ echo -n "<SSID>" | xxd -p
 
 ### 9.2. Update the location
 
-Open the dashboard at `http://bilal-<machine-id>:5000` from your Mac (works via Tailscale regardless of which LAN the Pi is on). Use **"Wrong location? Look up by address"** and type the recipient's city (e.g. `Austin, TX`). Click **Look Up**, verify the lat/lon/city/country/timezone auto-populate, then **Save Settings**.
+Open the dashboard at `http://bilal-<machine-id>:5000` from your Mac (works via Tailscale regardless of which LAN the Pi is on). Use **"Wrong location? Look up by address"** and type the recipient's city. Click **Look Up**, verify the lat/lon/city/country/timezone auto-populate, then **Save Settings**.
 
 The scheduler's config-watcher picks up the change within 30 seconds and re-schedules today's remaining prayers with the new coordinates.
 
@@ -371,13 +371,13 @@ Bilal — Setup Instructions
      - Your router's admin page
   4. Open http://<that-ip>:5000 in any browser
      on the same WiFi
-  5. Log in with the password Mehmet gave you
+  5. Log in with the password the maintainer gave you
   6. Click "Discover Speakers", check the boxes
      next to your Nest / Google Home devices
   7. Click Save — prayers play automatically
      at each vakit time
 
-  If anything is weird, text Mehmet — he can log in
+  If anything is weird, text the maintainer — they can log in
   remotely via Tailscale and fix it without you
   touching anything.
 ```
@@ -390,7 +390,26 @@ The Pi can travel with the SD card installed. On arrival, the recipient plugs it
 
 ## 10. Troubleshooting
 
-Actual issues we hit on the first real-hardware deployment and how we fixed them.
+### Forgot the dashboard password
+
+The dashboard password is stored as a bcrypt hash in `/data/auth.json` inside the Docker volume. Deleting this file resets the password — the next browser visit will prompt for a new one.
+
+**Quick reset via SSH:**
+
+```bash
+tailscale ssh bilal@bilal-<hostname>
+~/bilal/scripts/reset-password.sh
+```
+
+**Manual reset:**
+
+```bash
+docker exec bilal-web rm -f /data/auth.json
+```
+
+Then open the dashboard in your browser — you'll see the "Create admin password" screen.
+
+### Other issues
 
 ### `Err: No space left on device` during Tailscale install
 
