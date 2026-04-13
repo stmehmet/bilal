@@ -161,26 +161,6 @@ class TestSpeakers:
 # WiFi
 # ---------------------------------------------------------------------------
 
-class TestSmartThings:
-    def test_smartthings_devices_no_token_returns_400(self, logged_in_client):
-        resp = logged_in_client.post("/api/smartthings/devices")
-        assert resp.status_code == 400
-
-    @patch("app.st_list_devices")
-    def test_smartthings_devices_returns_list(self, mock_list, logged_in_client):
-        # Set a token in config first
-        logged_in_client.post("/api/config", json={"smartthings_token": "fake-token"})
-        mock_list.return_value = [
-            {"deviceId": "abc-123", "label": "Family Hub", "name": "Fridge", "deviceTypeName": "Samsung"},
-        ]
-        resp = logged_in_client.post("/api/smartthings/devices")
-        assert resp.status_code == 200
-        devices = resp.get_json()["devices"]
-        assert len(devices) == 1
-        assert devices[0]["device_id"] == "abc-123"
-        assert devices[0]["label"] == "Family Hub"
-
-
 class TestWiFi:
     @patch("subprocess.run")
     def test_wifi_networks_returns_parsed_list(self, mock_run, logged_in_client):

@@ -42,7 +42,6 @@ from config import (  # noqa: E402
 )
 from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
 from geolocation import detect_location, geocode_address  # noqa: E402
-from smartthings import list_devices as st_list_devices  # noqa: E402
 from adhan_scheduler import compute_prayer_times, compute_iqamah_times, validate_audio_files  # noqa: E402
 
 app = Flask(__name__)
@@ -384,13 +383,8 @@ def update_config():
     data = request.get_json(silent=True) or {}
     errors = []
 
-    for key in (
-        "calculation_method",
-        "smartthings_token",
-        "smartthings_device_id",
-    ):
-        if key in data:
-            config[key] = data[key]
+    if "calculation_method" in data:
+        config["calculation_method"] = data["calculation_method"]
 
     if "calculation_method" in data:
         if data["calculation_method"] not in CALCULATION_METHODS:
@@ -692,26 +686,6 @@ def api_test_speaker():
     return jsonify({"error": f"Speaker '{speaker_name}' not found"}), 404
 
 
-@app.route("/api/smartthings/devices", methods=["POST"])
-@login_required
-def api_smartthings_devices():
-    """List SmartThings devices using the configured token."""
-    config = load_config()
-    token = config.get("smartthings_token", "")
-    if not token:
-        return jsonify({"error": "SmartThings token not configured"}), 400
-    devices = st_list_devices(token)
-    result = [
-        {
-            "device_id": d.get("deviceId", ""),
-            "label": d.get("label", d.get("name", "Unknown")),
-            "type": d.get("deviceTypeName", ""),
-        }
-        for d in devices
-    ]
-    return jsonify({"devices": result})
-
-
 @app.route("/api/prayer-times", methods=["GET"])
 @login_required
 def api_prayer_times():
@@ -872,7 +846,6 @@ def api_status():
         "audio_files_missing": audio_missing,
         "dnd_enabled": config.get("dnd_enabled", False),
         "iqamah_enabled": config.get("iqamah_enabled", False),
-        "smartthings_configured": bool(config.get("smartthings_token")),
         "server_time": datetime.datetime.now(
             pytz.timezone(config.get("timezone", "UTC"))
         ).isoformat(),
@@ -901,9 +874,7 @@ def api_config_export():
     """Export configuration as a downloadable JSON file (excludes secrets)."""
     config = load_config()
     # Redact sensitive fields
-    safe_config = {k: v for k, v in config.items() if k != "smartthings_token"}
-    if config.get("smartthings_token"):
-        safe_config["smartthings_token"] = "***redacted***"
+    safe_config = dict(config)
     response = jsonify(safe_config)
     response.headers["Content-Disposition"] = "attachment; filename=bilal-config.json"
     return response

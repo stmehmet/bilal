@@ -20,7 +20,6 @@ from config import (
     load_config,
 )
 from discovery import connect_speakers_direct, discover_chromecasts, play_on_all
-from smartthings import play_audio_on_device
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +175,7 @@ def _play_on_speakers(
     event_label: str,
     prayer_name: str | None = None,
 ) -> None:
-    """Play audio on all enabled Chromecast speakers and SmartThings devices.
+    """Play audio on all enabled Chromecast speakers.
 
     When *prayer_name* is given, each speaker's per-prayer schedule is checked
     against today's weekday.  A missing ``schedule`` key means "all days" for
@@ -242,11 +241,6 @@ def _play_on_speakers(
         except Exception as exc:
             logger.error("%s Chromecast playback error: %s", event_label, exc)
 
-    # --- SmartThings playback ---
-    st_token = config.get("smartthings_token", "")
-    st_device = config.get("smartthings_device_id", "")
-    if st_token and st_device:
-        play_audio_on_device(st_token, st_device, media_url)
 
 
 def trigger_adhan(prayer_name: str) -> None:
