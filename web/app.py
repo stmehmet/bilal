@@ -544,11 +544,20 @@ def api_discover_speakers():
     speakers = config.get("speakers", {})
     for name, info in meta.items():
         if name not in speakers:
-            speakers[name] = {"enabled": True, "is_group": info["is_group"], "model": info["model"]}
+            speakers[name] = {
+                "enabled": True,
+                "is_group": info["is_group"],
+                "model": info["model"],
+                "host": info.get("host"),
+                "port": info.get("port", 8009),
+            }
         else:
-            # Update metadata on re-scan
+            # Update metadata + network info on re-scan
             speakers[name]["is_group"] = info["is_group"]
             speakers[name]["model"] = info["model"]
+            if info.get("host"):
+                speakers[name]["host"] = info["host"]
+                speakers[name]["port"] = info.get("port", 8009)
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"speakers": list(speakers.keys())})

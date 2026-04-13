@@ -19,7 +19,7 @@ from config import (
     config_changed_since,
     load_config,
 )
-from discovery import discover_chromecasts, play_on_all
+from discovery import connect_speakers_direct, discover_chromecasts, play_on_all
 from smartthings import play_audio_on_device
 
 logger = logging.getLogger(__name__)
@@ -221,13 +221,15 @@ def _play_on_speakers(
                 if sv is not None:
                     speaker_volumes[name] = sv
 
-            devices = discover_chromecasts(timeout=15)
+            # 1. Try direct connection by saved host/port (fast, no mDNS)
+            devices = connect_speakers_direct(speakers, enabled, timeout=10)
 
-            # Retry discovery if any enabled speakers weren't found
+            # 2. Fall back to mDNS discovery for any speakers not reached directly
             missing = [n for n in enabled if n not in devices]
             if missing:
-                logger.info("  Retrying discovery for missing speakers: %s", missing)
-                devices = discover_chromecasts(timeout=15, use_cache=False)
+                logger.info("  mDNS fallback for: %s", missing)
+                discovered = discover_chromecasts(timeout=15, use_cache=False)
+                devices.update({n: discovered[n] for n in missing if n in discovered})
 
             results = play_on_all(
                 devices, enabled, media_url,
@@ -299,6 +301,33 @@ def trigger_iqamah(prayer_name: str) -> None:
 
     logger.info("Iqamah for %s – playing %s", prayer_name, media_url)
     _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})", prayer_name=prayer_name)
+
+
+def _prewarm_speakers() -> None:
+    """Connect to all enabled speakers to wake them from sleep.
+
+    Scheduled 2 minutes before each prayer so devices are responsive
+    when the adhan triggers.  Refreshes the discovery cache as a side effect.
+    """
+    config = load_config()
+    speakers = config.get("speakers", {})
+    enabled = [n for n, info in speakers.items() if info.get("enabled", False)]
+    if not enabled:
+        return
+
+    logger.info("Pre-warming %d speaker(s)...", len(enabled))
+
+    # Try direct connect first (fast)
+    devices = connect_speakers_direct(speakers, enabled, timeout=10)
+
+    # mDNS fallback for any not reached directly
+    missing = [n for n in enabled if n not in devices]
+    if missing:
+        discovered = discover_chromecasts(timeout=15, use_cache=False)
+        devices.update({n: discovered[n] for n in missing if n in discovered})
+
+    found = len(devices)
+    logger.info("Pre-warm complete: %d/%d speakers ready", found, len(enabled))
 
 
 class AdhanSchedulerService:
@@ -382,6 +411,20 @@ class AdhanSchedulerService:
                 logger.debug("Skipping %s (already passed at %s)", prayer, pt)
                 continue
 
+            # Pre-warm speakers 2 minutes before adhan
+            prewarm_time = pt - datetime.timedelta(minutes=2)
+            if prewarm_time > now:
+                pw_id = f"prewarm_{prayer}"
+                self.scheduler.add_job(
+                    _prewarm_speakers,
+                    "date",
+                    run_date=prewarm_time,
+                    id=pw_id,
+                    replace_existing=True,
+                    misfire_grace_time=120,
+                )
+                self._job_ids.append(pw_id)
+
             job_id = f"adhan_{prayer}"
             self.scheduler.add_job(
                 trigger_adhan,
@@ -393,7 +436,7 @@ class AdhanSchedulerService:
                 misfire_grace_time=300,
             )
             self._job_ids.append(job_id)
-            logger.info("Scheduled %s at %s", prayer, pt.strftime("%H:%M:%S"))
+            logger.info("Scheduled %s at %s (pre-warm at %s)", prayer, pt.strftime("%H:%M:%S"), prewarm_time.strftime("%H:%M:%S"))
 
         # --- Iqamah jobs ---
         if config.get("iqamah_enabled", False):
