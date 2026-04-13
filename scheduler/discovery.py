@@ -1,4 +1,4 @@
-"""mDNS device discovery for Google Nest/Home speakers."""
+"""mDNS device discovery + direct-connect for Google Nest/Home speakers."""
 
 import logging
 import time
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _cache_lock = threading.Lock()
 _cached_devices: dict[str, pychromecast.Chromecast] = {}
 _cache_timestamp: float = 0
-CACHE_TTL_SECONDS = 300  # 5 minutes
+CACHE_TTL_SECONDS = 600  # 10 minutes (bumped from 5 — direct-connect is the fast path now)
 
 
 def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str, pychromecast.Chromecast]:
@@ -46,17 +46,80 @@ def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str,
     return devices
 
 
-def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict[str, dict]:
-    """Return display metadata (model, type) for each discovered device.
+def connect_by_host(host: str, port: int = 8009, timeout: float = 10) -> pychromecast.Chromecast | None:
+    """Connect directly to a Chromecast by IP address, skipping mDNS.
 
-    Returns a mapping of friendly_name -> {model, is_group}.
+    Returns a Chromecast object on success, None on failure.
+    """
+    try:
+        casts, browser = pychromecast.get_listed_chromecasts(
+            friendly_names=None,
+            known_hosts=[host],
+            timeout=timeout,
+        )
+        if browser:
+            browser.stop_discovery()
+        if casts:
+            cc = casts[0]
+            cc.wait(timeout=timeout)
+            return cc
+    except Exception as exc:
+        logger.debug("Direct connect to %s:%d failed: %s", host, port, exc)
+    return None
+
+
+def connect_speakers_direct(
+    speakers_config: dict,
+    enabled_names: list[str],
+    timeout: float = 10,
+) -> dict[str, pychromecast.Chromecast]:
+    """Connect to enabled speakers using stored host/port (no mDNS).
+
+    Tries direct connection for each speaker that has a saved host.
+    Returns a mapping of friendly_name -> Chromecast for successful connections.
+    """
+    devices = {}
+    for name in enabled_names:
+        info = speakers_config.get(name, {})
+        host = info.get("host")
+        port = info.get("port", 8009)
+        if not host:
+            continue
+        cc = connect_by_host(host, port, timeout=timeout)
+        if cc:
+            devices[name] = cc
+            logger.info("Direct connect OK: %s (%s:%d)", name, host, port)
+        else:
+            logger.info("Direct connect failed: %s (%s:%d), will fall back to mDNS", name, host, port)
+    return devices
+
+
+def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict[str, dict]:
+    """Return display metadata (model, type, host, port) for each discovered device.
+
+    Returns a mapping of friendly_name -> {model, is_group, host, port}.
     """
     meta = {}
     for name, cc in chromecasts.items():
         cast_type = getattr(cc.cast_info, "cast_type", "cast")
+        host = None
+        port = 8009
+        # Extract host from cast_info
+        if hasattr(cc.cast_info, "host"):
+            host = cc.cast_info.host
+        elif hasattr(cc.cast_info, "services") and cc.cast_info.services:
+            for service in cc.cast_info.services:
+                if hasattr(service, "__iter__") and len(service) >= 2:
+                    host = service[1] if isinstance(service[1], str) and "." in service[1] else None
+                    if host:
+                        break
+        if hasattr(cc.cast_info, "port"):
+            port = cc.cast_info.port
         meta[name] = {
             "model": cc.cast_info.model_name,
             "is_group": cast_type == "group",
+            "host": host,
+            "port": port,
         }
     return meta
 
