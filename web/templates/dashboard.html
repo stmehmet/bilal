@@ -17,7 +17,7 @@
     .font-brand { font-family: 'Aref Ruqaa', serif; letter-spacing: 0.02em; }
   </style>
 </head>
-<body class="text-slate-200 p-4 md:p-8">
+<body class="text-slate-200 p-4 md:p-8 overflow-x-hidden">
 
   <!-- Header -->
   <header class="max-w-4xl mx-auto flex items-center justify-between mb-8">
@@ -69,7 +69,7 @@
     {% endif %}
 
     <!-- Prayer Times + Iqamah -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
         <i class="ph ph-clock-countdown"></i> Today's Prayer Times
       </h2>
@@ -125,11 +125,11 @@
     </section>
 
     <!-- Settings -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
         <i class="ph ph-sliders-horizontal"></i> Settings
       </h2>
-      <div class="grid md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         <!-- Location -->
         <div>
@@ -257,7 +257,7 @@
     </section>
 
     <!-- Iqamah Offsets -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
@@ -302,7 +302,7 @@
     </section>
 
     <!-- Do Not Disturb -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
@@ -342,7 +342,7 @@
     </section>
 
     <!-- Speakers -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
           <i class="ph ph-speaker-high"></i> Speakers
@@ -418,11 +418,11 @@
           </div>
           {# Per-speaker volume override #}
           {% set speaker_vol = info.get('volume') %}
-          <div class="mt-2 flex items-center gap-2">
-            <i class="ph ph-speaker-high text-slate-500 text-xs"></i>
+          <div class="mt-2 flex items-center gap-2 min-w-0">
+            <i class="ph ph-speaker-high text-slate-500 text-xs flex-shrink-0"></i>
             <input type="range" min="0" max="100"
                    value="{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}"
-                   class="flex-1 accent-emerald-500 h-1.5 speaker-volume"
+                   class="flex-1 min-w-0 accent-emerald-500 h-1.5 speaker-volume"
                    data-speaker="{{ name }}"
                    oninput="this.nextElementSibling.textContent = this.value + '%'">
             <span class="text-xs text-slate-400 w-8">{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}%</span>
@@ -474,7 +474,7 @@
     </section>
 
     <!-- SmartThings Integration -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
         <i class="ph ph-devices"></i> SmartThings
       </h2>
@@ -488,10 +488,10 @@
         </div>
         <div>
           <label class="block text-slate-400 text-sm mb-1">Device ID</label>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <input id="st-device" type="text" placeholder="Device UUID"
                    value="{{ config.smartthings_device_id }}"
-                   class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                           text-white outline-none focus:ring-2 focus:ring-emerald-500">
             <button onclick="browseSmartThingsDevices()" id="st-browse-btn"
                     class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-3 py-2 rounded-lg
@@ -515,7 +515,7 @@
     </section>
 
     <!-- WiFi Configuration -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6">
+    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
@@ -538,16 +538,16 @@
         <summary class="cursor-pointer text-sm text-slate-400 hover:text-slate-200 select-none">
           Manual connect / hidden network
         </summary>
-        <div class="mt-3 flex gap-2">
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
           <input id="wifi-ssid" type="text" placeholder="Network name (SSID)"
-                 class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
           <input id="wifi-password" type="password" placeholder="Password"
-                 class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
+                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
           <button onclick="connectWifi(document.getElementById('wifi-ssid').value, document.getElementById('wifi-password').value)"
-                  class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap
-                         inline-flex items-center gap-1.5">
+                  class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors
+                         inline-flex items-center justify-center gap-1.5">
             <i class="ph ph-link"></i> Connect
           </button>
         </div>
