@@ -113,11 +113,14 @@ def audio_display_label(filename: str) -> str:
     if len(parts) >= 2 and parts[0] == "iqamah":
         return parts[1].title()
 
-    # sela_<occasion>_<maqam>
-    if len(parts) >= 3 and parts[0] == "sela":
-        occasion = parts[1].title()
+    # sela_<occasion>_<maqam>_<number>
+    if len(parts) >= 4 and parts[0] == "sela":
         maqam = MAQAM_LABELS.get(parts[2], parts[2].title())
-        return f"{occasion} {maqam}"
+        return f"{maqam} {parts[3]}"
+
+    # sela_<occasion>_<maqam> (no number)
+    if len(parts) == 3 and parts[0] == "sela":
+        return MAQAM_LABELS.get(parts[2], parts[2].title())
 
     # Fallback
     return " ".join(p.title() for p in parts if p)
@@ -154,6 +157,19 @@ def _build_audio_file_list() -> list[dict]:
         if f.suffix == ".mp3"
     ]
     # Sort by label so the dropdowns are alphabetised by human-readable name
+    entries.sort(key=lambda e: (e["label"].lower(), e["filename"]))
+    return entries
+
+
+def _build_sela_file_list() -> list[dict]:
+    """Scan AUDIO_DIR for sela_*.mp3 files only."""
+    if not AUDIO_DIR.exists():
+        return []
+    entries = [
+        {"filename": f.name, "label": audio_display_label(f.name)}
+        for f in AUDIO_DIR.iterdir()
+        if f.suffix == ".mp3" and f.name.startswith("sela_")
+    ]
     entries.sort(key=lambda e: (e["label"].lower(), e["filename"]))
     return entries
 
@@ -333,6 +349,7 @@ def dashboard():
 
     audio_files = _build_audio_file_list()
     audio_files_by_prayer = _build_audio_files_by_prayer()
+    sela_files = _build_sela_file_list()
 
     return render_template(
         "dashboard.html",
@@ -344,6 +361,7 @@ def dashboard():
         methods=CALCULATION_METHODS,
         audio_files=audio_files,
         audio_files_by_prayer=audio_files_by_prayer,
+        sela_files=sela_files,
         next_prayer=next_prayer,
     )
 
