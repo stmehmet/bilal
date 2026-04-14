@@ -348,6 +348,19 @@ def _prewarm_speakers() -> None:
     logger.info("Pre-warm complete: %d/%d speakers ready", found, len(enabled))
 
 
+def _heartbeat_ping() -> None:
+    """Ping an external monitoring URL to signal the scheduler is alive."""
+    import requests
+
+    url = os.getenv("HEALTHCHECK_PING_URL")
+    if not url:
+        return
+    try:
+        requests.get(url, timeout=10)
+    except Exception as exc:
+        logger.debug("Heartbeat ping failed: %s", exc)
+
+
 class AdhanSchedulerService:
     """Manages the APScheduler instance and reschedules daily."""
 
@@ -390,6 +403,19 @@ class AdhanSchedulerService:
             id="config_watcher",
             replace_existing=True,
         )
+
+        # Heartbeat ping for uptime monitoring (opt-in via HEALTHCHECK_PING_URL)
+        ping_url = os.getenv("HEALTHCHECK_PING_URL")
+        if ping_url:
+            self.scheduler.add_job(
+                _heartbeat_ping,
+                "interval",
+                minutes=30,
+                id="heartbeat",
+                replace_existing=True,
+            )
+            logger.info("Heartbeat monitoring enabled (every 30 min)")
+
         logger.info("Adhan scheduler started")
 
     def _check_config_change(self) -> None:
