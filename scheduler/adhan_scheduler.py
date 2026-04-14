@@ -410,11 +410,11 @@ class AdhanSchedulerService:
             self.scheduler.add_job(
                 _heartbeat_ping,
                 "interval",
-                minutes=5,
+                minutes=30,
                 id="heartbeat",
                 replace_existing=True,
             )
-            logger.info("Heartbeat monitoring enabled (every 5 min)")
+            logger.info("Heartbeat monitoring enabled (every 30 min)")
 
         logger.info("Adhan scheduler started")
 
