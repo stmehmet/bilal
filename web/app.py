@@ -670,11 +670,14 @@ def api_test_speaker():
     """Play a short test on a specific speaker."""
     import socket
 
-    from discovery import play_on_chromecast
+    from discovery import connect_by_host, play_on_chromecast
 
     data = request.get_json(silent=True) or {}
     speaker_name = data.get("speaker", "")
     config = load_config()
+    speakers = config.get("speakers", {})
+    speaker_info = speakers.get(speaker_name, {})
+
     # Use the Dhuhr file as the default test sample (any weekday adhan works)
     audio_files = config.get("adhan_audio_files", {}) or {}
     audio_file = audio_files.get("Dhuhr") or next(
@@ -695,11 +698,18 @@ def api_test_speaker():
     web_port = os.getenv("WEB_PORT", "5000")
     media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
 
-    devices = discover_chromecasts(timeout=8, use_cache=False)
-    if speaker_name in devices:
-        ok = play_on_chromecast(
-            devices[speaker_name], media_url, volume=config.get("volume", 0.5)
-        )
+    # Try direct connect by saved host/port first (fast), fall back to mDNS
+    device = None
+    host = speaker_info.get("host")
+    if host:
+        device = connect_by_host(host, speaker_info.get("port", 8009), timeout=10)
+    if not device:
+        devices = discover_chromecasts(timeout=10, use_cache=False)
+        device = devices.get(speaker_name)
+
+    if device:
+        vol = speaker_info.get("volume", config.get("volume", 0.5))
+        ok = play_on_chromecast(device, media_url, volume=vol)
         return jsonify({"status": "ok" if ok else "failed"})
     return jsonify({"error": f"Speaker '{speaker_name}' not found"}), 404
 
