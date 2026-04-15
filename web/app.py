@@ -636,6 +636,20 @@ def api_update_speakers():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/speakers/<speaker_name>", methods=["DELETE"])
+@login_required
+def api_remove_speaker(speaker_name):
+    """Remove a speaker or group from the saved config."""
+    config = load_config()
+    speakers = config.get("speakers", {})
+    if speaker_name not in speakers:
+        return jsonify({"error": f"Speaker '{speaker_name}' not found"}), 404
+    del speakers[speaker_name]
+    config["speakers"] = speakers
+    save_config(config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/speakers/schedule/apply-all", methods=["POST"])
 @login_required
 def api_speakers_schedule_apply_all():

@@ -458,11 +458,19 @@
                 {% endif %}
               </div>
             </label>
-            <button onclick="testSpeaker('{{ name }}')"
-                    class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
-                           px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
-              <i class="ph ph-play"></i> Test
-            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="testSpeaker('{{ name }}')"
+                      class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
+                             px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
+                <i class="ph ph-play"></i> Test
+              </button>
+              <button onclick="removeSpeaker('{{ name }}')"
+                      class="text-sm bg-red-600/20 hover:bg-red-600/40 text-red-400
+                             px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1"
+                      title="Remove speaker">
+                <i class="ph ph-trash"></i>
+              </button>
+            </div>
           </div>
           {# Per-speaker volume override #}
           {% set speaker_vol = info.get('volume') %}
@@ -806,6 +814,13 @@
       });
       if (resp.ok) toast(`Playing on ${name}`);
       else toast(`Test failed for ${name}`, true);
+    }
+
+    async function removeSpeaker(name) {
+      if (!confirm(`Remove "${name}" from saved speakers?`)) return;
+      const resp = await fetch(`/api/speakers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      if (resp.ok) { toast(`Removed ${name}`); setTimeout(() => location.reload(), 500); }
+      else toast(`Failed to remove ${name}`, true);
     }
 
     document.querySelectorAll('.speaker-toggle').forEach(cb => {
