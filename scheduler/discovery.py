@@ -167,7 +167,7 @@ def play_on_all(
     volume: float = 0.5,
     speaker_volumes: dict[str, float] | None = None,
 ) -> dict[str, bool]:
-    """Play audio on all enabled speakers.
+    """Play audio on all enabled speakers in parallel.
 
     Args:
         devices: All discovered devices.
@@ -179,11 +179,46 @@ def play_on_all(
     Returns a dict of device_name -> success.
     """
     results = {}
-    for name in enabled_names:
-        if name in devices:
-            vol = speaker_volumes.get(name, volume) if speaker_volumes else volume
-            results[name] = play_on_chromecast(devices[name], media_url, volume=vol)
+    missing = [n for n in enabled_names if n not in devices]
+    for name in missing:
+        logger.warning("Speaker '%s' not found on network", name)
+        results[name] = False
+
+    present = [n for n in enabled_names if n in devices]
+    if not present:
+        return results
+
+    # Play on all speakers concurrently so one slow/stuck device
+    # doesn't delay or block the others.
+    threads: list[threading.Thread] = []
+    thread_results: dict[str, bool] = {}
+    lock = threading.Lock()
+
+    def _play(name: str) -> None:
+        vol = speaker_volumes.get(name, volume) if speaker_volumes else volume
+        t0 = time.time()
+        ok = play_on_chromecast(devices[name], media_url, volume=vol)
+        elapsed = time.time() - t0
+        with lock:
+            thread_results[name] = ok
+        if ok:
+            logger.info("  %s responded in %.1fs", name, elapsed)
         else:
-            logger.warning("Speaker '%s' not found on network", name)
-            results[name] = False
+            logger.error("  %s FAILED after %.1fs", name, elapsed)
+
+    for name in present:
+        t = threading.Thread(target=_play, args=(name,), daemon=True)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join(timeout=45)
+
+    # Any thread that didn't finish in time
+    for name in present:
+        if name not in thread_results:
+            logger.error("  %s TIMED OUT (no response in 45s)", name)
+            thread_results[name] = False
+
+    results.update(thread_results)
     return results

@@ -348,19 +348,6 @@ def _prewarm_speakers() -> None:
     logger.info("Pre-warm complete: %d/%d speakers ready", found, len(enabled))
 
 
-def _heartbeat_ping() -> None:
-    """Ping an external monitoring URL to signal the scheduler is alive."""
-    import requests
-
-    url = os.getenv("HEALTHCHECK_PING_URL")
-    if not url:
-        return
-    try:
-        requests.get(url, timeout=10)
-    except Exception as exc:
-        logger.debug("Heartbeat ping failed: %s", exc)
-
-
 class AdhanSchedulerService:
     """Manages the APScheduler instance and reschedules daily."""
 
@@ -404,18 +391,6 @@ class AdhanSchedulerService:
             replace_existing=True,
         )
 
-        # Heartbeat ping for uptime monitoring (opt-in via HEALTHCHECK_PING_URL)
-        ping_url = os.getenv("HEALTHCHECK_PING_URL")
-        if ping_url:
-            self.scheduler.add_job(
-                _heartbeat_ping,
-                "interval",
-                minutes=30,
-                id="heartbeat",
-                replace_existing=True,
-            )
-            logger.info("Heartbeat monitoring enabled (every 30 min)")
-
         logger.info("Adhan scheduler started")
 
     def _check_config_change(self) -> None:
@@ -455,8 +430,8 @@ class AdhanSchedulerService:
                 logger.debug("Skipping %s (already passed at %s)", prayer, pt)
                 continue
 
-            # Pre-warm speakers 2 minutes before adhan
-            prewarm_time = pt - datetime.timedelta(minutes=2)
+            # Pre-warm speakers 30 seconds before adhan
+            prewarm_time = pt - datetime.timedelta(seconds=30)
             if prewarm_time > now:
                 pw_id = f"prewarm_{prayer}"
                 self.scheduler.add_job(
@@ -465,7 +440,7 @@ class AdhanSchedulerService:
                     run_date=prewarm_time,
                     id=pw_id,
                     replace_existing=True,
-                    misfire_grace_time=120,
+                    misfire_grace_time=60,
                 )
                 self._job_ids.append(pw_id)
 
@@ -480,7 +455,7 @@ class AdhanSchedulerService:
                 misfire_grace_time=300,
             )
             self._job_ids.append(job_id)
-            logger.info("Scheduled %s at %s (pre-warm at %s)", prayer, pt.strftime("%H:%M:%S"), prewarm_time.strftime("%H:%M:%S"))
+            logger.info("Scheduled %s at %s (pre-warm at %s, 30s before)", prayer, pt.strftime("%H:%M:%S"), prewarm_time.strftime("%H:%M:%S"))
 
         # --- Iqamah jobs ---
         if config.get("iqamah_enabled", False):
@@ -509,8 +484,8 @@ class AdhanSchedulerService:
             if dhuhr_time:
                 sela_time = dhuhr_time - datetime.timedelta(minutes=offset)
                 if sela_time > now and sela_time < dhuhr_time:
-                    # Pre-warm 2 minutes before sela
-                    pw_time = sela_time - datetime.timedelta(minutes=2)
+                    # Pre-warm 30 seconds before sela
+                    pw_time = sela_time - datetime.timedelta(seconds=30)
                     if pw_time > now:
                         pw_id = "prewarm_friday_sela"
                         self.scheduler.add_job(
