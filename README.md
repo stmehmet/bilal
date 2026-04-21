@@ -1,6 +1,6 @@
 # Bilal – Home Adhan System
 
-A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automatically plays the call to prayer on Google Nest/Home speakers and Samsung SmartThings devices.
+A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automatically plays the call to prayer on Google Nest/Home speakers.
 
 > **🏛 Understanding how it works?** Read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — components, data flows, and the design decisions behind them (including why the web and scheduler containers run with host networking, why the scheduler uses an in-memory jobstore, and why we picked Tailscale + Watchtower + Nominatim).
 >
@@ -12,7 +12,8 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 
 - **Automatic prayer time calculation** using the `adhan` library with 13+ calculation methods
 - **Chromecast/Google Nest discovery** via mDNS – plays `.mp3` files from local storage
-- **Samsung SmartThings integration** for Family Hub fridges (audio + notifications)
+- **Per-speaker Adhan + Iqamah schedules** with day-of-week control
+- **Playback log** per speaker (7-day retention, auto-pruned)
 - **IP-based auto-location** on first boot (ipapi / ipinfo fallback)
 - **Captive Portal** – creates a WiFi hotspot if no network is found
 - **Mobile-responsive dashboard** (Flask + Tailwind CSS) with password protection
@@ -41,10 +42,10 @@ A production-ready, "giftable" Adhan system for Raspberry Pi 4 that automaticall
 │  └────────────────────────────────────┘            │
 └────────────────────────────────────────────────────┘
          │                        │
-    ┌────┴─────┐          ┌──────┴────────┐
-    │ Google   │          │  SmartThings  │
-    │ Nest/Home│          │  Family Hub   │
-    └──────────┘          └───────────────┘
+         ┌────────────┐
+         │  Google    │
+         │  Nest/Home │
+         └────────────┘
 ```
 
 ## Quick Start
@@ -137,7 +138,7 @@ The end-to-end recipe for assembling a gift unit:
 | **Speaker Discovery** | Scan network for Google Nest/Home devices |
 | **Test on Speaker** | Play a test adhan on any discovered speaker |
 | **Preview** | Listen to the adhan in your browser |
-| **SmartThings** | Configure Samsung Family Hub integration |
+| **Playback Log** | Per-speaker success/failure history (7 days, auto-pruned) |
 
 ### Captive Portal (First Boot WiFi Setup)
 
@@ -190,7 +191,7 @@ bilal/
 │   ├── config.py           # Shared configuration (JSON on disk)
 │   ├── discovery.py        # Chromecast mDNS discovery & playback
 │   ├── geolocation.py      # IP-based location detection
-│   ├── smartthings.py      # Samsung SmartThings API integration
+│   ├── playback_log.py     # Per-speaker playback log (JSONL + retention)
 │   └── requirements.txt
 ├── web/
 │   ├── app.py              # Flask web dashboard

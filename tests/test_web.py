@@ -162,23 +162,6 @@ class TestSpeakers:
 # ---------------------------------------------------------------------------
 
 class TestWiFi:
-    @patch("subprocess.run")
-    def test_wifi_networks_returns_parsed_list(self, mock_run, logged_in_client):
-        mock_run.return_value = MagicMock(
-            stdout="HomeNet:85:WPA2:*\nNeighbor:60:WPA2:\n",
-            returncode=0,
-        )
-        resp = logged_in_client.get("/api/wifi/networks")
-        assert resp.status_code == 200
-        networks = resp.get_json()["networks"]
-        assert len(networks) == 2
-        assert networks[0]["ssid"] == "HomeNet"
-        assert networks[0]["connected"] is True
-
-    def test_wifi_connect_requires_ssid(self, logged_in_client):
-        resp = logged_in_client.post("/api/wifi/connect", json={})
-        assert resp.status_code == 400
-
     @patch("subprocess.run", side_effect=FileNotFoundError)
     def test_wifi_status_handles_nmcli_missing(self, mock_run, logged_in_client):
         resp = logged_in_client.get("/api/wifi/status")

@@ -150,7 +150,7 @@ Answering that question well is why we use Tailscale, Watchtower, container auto
 5. Register a config-watcher job on a 30-second interval that triggers a full reschedule if `config.json`'s mtime changed
 6. Block in the APScheduler event loop until shutdown
 
-**Job handler:** `trigger_adhan(prayer_name: str)` resolves the configured audio file, looks up enabled speakers + SmartThings targets, and dispatches playback.
+**Job handler:** `trigger_adhan(prayer_name: str)` resolves the configured audio file, looks up enabled speakers (honouring each speaker's per-prayer day-of-week schedule), and dispatches playback in parallel. `trigger_iqamah(prayer_name: str)` mirrors the flow using the per-speaker iqamah schedule. Each attempt is recorded to the playback log for observability.
 
 **Runs as:** non-root `bilal` user inside the container.
 
@@ -730,7 +730,7 @@ bilal/
 │   ├── config.py                 # Load/save/watch config.json
 │   ├── discovery.py              # pychromecast scanning + Cast protocol LOAD
 │   ├── geolocation.py            # IP detect + Nominatim address lookup
-│   ├── smartthings.py            # Samsung Family Hub integration (optional)
+│   ├── playback_log.py           # Per-speaker JSONL log with 7-day retention
 │   └── requirements.txt
 │
 ├── web/                          # bilal-web container source

@@ -20,8 +20,6 @@ DEFAULT_CONFIG = {
     "calculation_method": "ISNA",
     "skip_prayers": [],
     "speakers": {},
-    "smartthings_token": "",
-    "smartthings_device_id": "",
     # Per-prayer adhan audio files. Keys must match PRAYER_NAMES.
     # Each prayer is traditionally recited in a specific Ottoman maqam:
     # Saba (Fajr), Uşşak (Dhuhr), Rast (Asr), Segâh (Maghrib), Hicaz (Isha).
@@ -100,6 +98,24 @@ def _migrate_audio_filenames(config: dict) -> bool:
     return changed
 
 
+_DEPRECATED_KEYS = ("smartthings_token", "smartthings_device_id")
+
+
+def _strip_deprecated_keys(config: dict) -> bool:
+    """Remove keys that belong to features we no longer ship (e.g. SmartThings).
+
+    Returns True if anything was stripped, so the caller knows to persist.
+    """
+    changed = False
+    for key in _DEPRECATED_KEYS:
+        if key in config:
+            del config[key]
+            changed = True
+    if changed:
+        logger.info("Removed deprecated config keys: %s", ", ".join(_DEPRECATED_KEYS))
+    return changed
+
+
 def load_config() -> dict:
     """Load configuration from disk, merging with defaults."""
     config = DEFAULT_CONFIG.copy()
@@ -112,7 +128,9 @@ def load_config() -> dict:
             logger.error("Corrupt config file %s: %s", CONFIG_FILE, exc)
         except OSError as exc:
             logger.error("Cannot read config file %s: %s", CONFIG_FILE, exc)
-    if _migrate_audio_filenames(config):
+    migrated = _migrate_audio_filenames(config)
+    stripped = _strip_deprecated_keys(config)
+    if migrated or stripped:
         save_config(config)
     return config
 

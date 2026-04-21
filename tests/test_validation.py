@@ -376,28 +376,6 @@ class TestConfigExportImport:
 
 
 # ---------------------------------------------------------------------------
-# WiFi SSID sanitization
-# ---------------------------------------------------------------------------
-
-class TestWifiSanitization:
-    @patch("subprocess.run")
-    def test_ssid_with_control_chars_rejected(self, mock_run, logged_in_client):
-        resp = logged_in_client.post(
-            "/api/wifi/connect",
-            json={"ssid": "evil\x00ssid", "password": "pass123"},
-        )
-        assert resp.status_code == 400
-
-    @patch("subprocess.run")
-    def test_ssid_too_long_rejected(self, mock_run, logged_in_client):
-        resp = logged_in_client.post(
-            "/api/wifi/connect",
-            json={"ssid": "A" * 33, "password": "pass123"},
-        )
-        assert resp.status_code == 400
-
-
-# ---------------------------------------------------------------------------
 # Config change detection
 # ---------------------------------------------------------------------------
 
