@@ -43,6 +43,7 @@ from config import (  # noqa: E402
 from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
 from geolocation import detect_location, geocode_address  # noqa: E402
 from adhan_scheduler import compute_prayer_times, compute_iqamah_times, validate_audio_files  # noqa: E402
+import playback_log  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
@@ -594,6 +595,28 @@ def api_discover_speakers():
     return jsonify({"speakers": list(speakers.keys())})
 
 
+def _validate_schedule_payload(raw) -> dict[str, list[int] | None] | None:
+    """Coerce a schedule dict from the wire into a safe stored form.
+
+    Returns a dict of ``prayer -> sorted unique weekday ints (0-6)`` or
+    ``None`` for "all days".  Non-dict / empty-dict inputs return None so
+    the caller can remove the stored value.
+    """
+    if not isinstance(raw, dict):
+        return None
+    validated: dict[str, list[int] | None] = {}
+    for prayer, days in raw.items():
+        if prayer not in PRAYER_NAMES:
+            continue
+        if days is None:
+            validated[prayer] = None
+        elif isinstance(days, list):
+            validated[prayer] = sorted(
+                {d for d in days if isinstance(d, int) and 0 <= d <= 6}
+            )
+    return validated
+
+
 @app.route("/api/speakers", methods=["POST"])
 @login_required
 def api_update_speakers():
@@ -605,22 +628,16 @@ def api_update_speakers():
             continue
         if "enabled" in info:
             speakers[name]["enabled"] = bool(info["enabled"])
-        if "schedule" in info:
-            schedule = info["schedule"]
-            if schedule is None:
-                speakers[name].pop("schedule", None)
-            elif isinstance(schedule, dict):
-                validated: dict[str, list[int] | None] = {}
-                for prayer, days in schedule.items():
-                    if prayer not in PRAYER_NAMES:
-                        continue
-                    if days is None:
-                        validated[prayer] = None
-                    elif isinstance(days, list):
-                        validated[prayer] = sorted(
-                            {d for d in days if isinstance(d, int) and 0 <= d <= 6}
-                        )
-                speakers[name]["schedule"] = validated
+        for key in ("schedule", "iqamah_schedule"):
+            if key not in info:
+                continue
+            raw = info[key]
+            if raw is None:
+                speakers[name].pop(key, None)
+            else:
+                validated = _validate_schedule_payload(raw)
+                if validated is not None:
+                    speakers[name][key] = validated
         if "volume" in info:
             vol = info["volume"]
             if vol is None:
@@ -653,29 +670,68 @@ def api_remove_speaker(speaker_name):
 @app.route("/api/speakers/schedule/apply-all", methods=["POST"])
 @login_required
 def api_speakers_schedule_apply_all():
-    """Apply one schedule template to every speaker."""
+    """Apply one schedule template to every speaker.
+
+    Accepts ``{schedule: {...}, kind: "adhan"|"iqamah"}`` where ``kind``
+    picks which per-speaker schedule field is overwritten.  ``kind``
+    defaults to ``"adhan"`` for backward compatibility.
+    """
     data = request.get_json(silent=True) or {}
     schedule_template = data.get("schedule")
+    kind = data.get("kind", "adhan")
+    key = "iqamah_schedule" if kind == "iqamah" else "schedule"
     config = load_config()
     speakers = config.get("speakers", {})
     for name in speakers:
         if schedule_template is None:
-            speakers[name].pop("schedule", None)
-        elif isinstance(schedule_template, dict):
-            validated: dict[str, list[int] | None] = {}
-            for prayer, days in schedule_template.items():
-                if prayer not in PRAYER_NAMES:
-                    continue
-                if days is None:
-                    validated[prayer] = None
-                elif isinstance(days, list):
-                    validated[prayer] = sorted(
-                        {d for d in days if isinstance(d, int) and 0 <= d <= 6}
-                    )
-            speakers[name]["schedule"] = validated
+            speakers[name].pop(key, None)
+        else:
+            validated = _validate_schedule_payload(schedule_template)
+            if validated is not None:
+                speakers[name][key] = validated
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/playback-log", methods=["GET"])
+@login_required
+def api_playback_log():
+    """Return recent playback log entries for observability.
+
+    Query params:
+        speaker: filter to one speaker name (optional)
+        limit:   max entries to return (default 50, cap 500)
+        days:    look back this many days (default 7, cap 30)
+    """
+    speaker = request.args.get("speaker") or None
+    try:
+        limit = max(1, min(500, int(request.args.get("limit", 50))))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        days = max(1, min(30, int(request.args.get("days", 7))))
+    except (TypeError, ValueError):
+        days = 7
+    entries = playback_log.query(speaker=speaker, limit=limit, days=days)
+    return jsonify({"entries": entries, "count": len(entries)})
+
+
+@app.route("/api/playback-log", methods=["DELETE"])
+@login_required
+def api_playback_log_purge():
+    """Force-prune the playback log.
+
+    ``?older_than_days=N`` overrides the default retention; pass 0 to
+    clear everything.
+    """
+    try:
+        days = int(request.args.get("older_than_days", playback_log.RETENTION_DAYS))
+    except (TypeError, ValueError):
+        days = playback_log.RETENTION_DAYS
+    days = max(0, min(90, days))
+    removed = playback_log.purge(older_than_days=days)
+    return jsonify({"removed": removed})
 
 
 @app.route("/api/test-speaker", methods=["POST"])
@@ -737,73 +793,18 @@ def api_prayer_times():
 
 
 # ---------------------------------------------------------------------------
-# WiFi configuration
+# WiFi status (read-only)
 # ---------------------------------------------------------------------------
-@app.route("/api/wifi/networks", methods=["GET"])
-@login_required
-def api_wifi_networks():
-    """List available WiFi networks via nmcli."""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY,IN-USE", "device", "wifi", "list"],
-            capture_output=True, text=True, timeout=15,
-        )
-        networks = []
-        seen = set()
-        for line in result.stdout.strip().splitlines():
-            parts = line.split(":")
-            if len(parts) < 4:
-                continue
-            ssid, signal, security, in_use = parts[0], parts[1], parts[2], parts[3]
-            if not ssid or ssid in seen:
-                continue
-            seen.add(ssid)
-            networks.append({
-                "ssid": ssid,
-                "signal": int(signal) if signal.isdigit() else 0,
-                "security": security or "Open",
-                "connected": in_use.strip() == "*",
-            })
-        networks.sort(key=lambda n: -n["signal"])
-        return jsonify({"networks": networks})
-    except FileNotFoundError:
-        return jsonify({"error": "nmcli not available on this system"}), 503
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-
-@app.route("/api/wifi/connect", methods=["POST"])
-@login_required
-def api_wifi_connect():
-    """Connect to a WiFi network."""
-    import subprocess
-    data = request.get_json(silent=True) or {}
-    ssid = data.get("ssid", "").strip()
-    password = data.get("password", "").strip()
-    if not ssid:
-        return jsonify({"error": "SSID required"}), 400
-    # Sanitize SSID: reject control characters and excessive length
-    if len(ssid) > 32 or any(ord(c) < 32 for c in ssid):
-        return jsonify({"error": "Invalid SSID"}), 400
-    try:
-        cmd = ["nmcli", "device", "wifi", "connect", ssid]
-        if password:
-            cmd += ["password", password]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode == 0:
-            return jsonify({"status": "connected", "ssid": ssid})
-        return jsonify({"error": result.stderr.strip() or "Connection failed"}), 500
-    except FileNotFoundError:
-        return jsonify({"error": "nmcli not available on this system"}), 503
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-
+# The web container intentionally does not have nmcli or NetworkManager dbus
+# access — active WiFi management from the dashboard would require widening
+# the container's privileges significantly for a feature the user exercises
+# maybe once.  Status reporting is best-effort: if nmcli happens to be
+# available we surface the current SSID, otherwise we return a 503 with a
+# helpful message and the dashboard shows SSH instructions.
 @app.route("/api/wifi/status", methods=["GET"])
 @login_required
 def api_wifi_status():
-    """Return current WiFi connection info."""
+    """Return current WiFi connection info if nmcli is reachable."""
     import subprocess
     try:
         result = subprocess.run(
@@ -820,11 +821,10 @@ def api_wifi_status():
                 })
         return jsonify({"state": "unknown"})
     except FileNotFoundError:
-        # nmcli is on the host, not in this container. WiFi management from
-        # the dashboard requires NetworkManager + dbus access which is not
-        # wired up yet. Fall back to a friendly message; users can still
-        # change networks via SSH.
-        return jsonify({"error": "WiFi management not available in container. Use SSH: sudo nmcli device wifi list"}), 503
+        return jsonify({
+            "error": "WiFi management is not available from the dashboard. "
+                     "SSH to the Pi and run: sudo nmcli device wifi list"
+        }), 503
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 
