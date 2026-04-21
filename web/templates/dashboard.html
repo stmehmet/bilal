@@ -408,6 +408,16 @@
           <i class="ph ph-calendar-check"></i> Set schedule for all speakers
         </summary>
         <div class="mt-3 bg-slate-700/30 rounded-lg p-4">
+          <div class="flex items-center gap-1 mb-3" role="tablist">
+            <button type="button" data-global-tab="adhan"
+                    class="global-tab-btn px-3 py-1 text-xs rounded-md bg-emerald-600 text-white">
+              Adhan
+            </button>
+            <button type="button" data-global-tab="iqamah"
+                    class="global-tab-btn px-3 py-1 text-xs rounded-md bg-slate-600 text-slate-300">
+              Iqamah
+            </button>
+          </div>
           <div class="grid grid-cols-5 gap-2 text-center mb-3" id="global-schedule">
             {% for prayer in prayer_names %}
             <div>
@@ -432,7 +442,7 @@
             <button onclick="applyScheduleToAll()"
                     class="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-1.5
                            rounded-lg transition-colors inline-flex items-center gap-1">
-              <i class="ph ph-broadcast"></i> Apply to All
+              <i class="ph ph-broadcast"></i> Apply to All (<span id="global-tab-label">Adhan</span>)
             </button>
           </div>
         </div>
@@ -489,37 +499,62 @@
               <i class="ph ph-arrow-counter-clockwise"></i>
             </button>
           </div>
-          {# Per-speaker prayer schedule #}
+          {# Per-speaker prayer schedule — Adhan + Iqamah in a tabbed view #}
           <details class="mt-2">
             <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
               <i class="ph ph-calendar-check"></i> Prayer schedule
             </summary>
-            <div class="mt-2 grid grid-cols-5 gap-2 text-center speaker-schedule" data-speaker="{{ name }}">
+            <div class="mt-2 flex items-center gap-1" data-speaker-tabs="{{ name }}" role="tablist">
+              <button type="button" data-speaker="{{ name }}" data-kind="adhan"
+                      class="speaker-tab-btn px-3 py-1 text-xs rounded-md bg-emerald-600 text-white">
+                Adhan
+              </button>
+              <button type="button" data-speaker="{{ name }}" data-kind="iqamah"
+                      class="speaker-tab-btn px-3 py-1 text-xs rounded-md bg-slate-600 text-slate-300">
+                Iqamah
+              </button>
+              <button type="button" onclick="viewSpeakerLogs('{{ name }}')"
+                      class="ml-auto px-3 py-1 text-xs rounded-md bg-slate-600 hover:bg-slate-500 text-slate-200 inline-flex items-center gap-1"
+                      title="Recent playback attempts on this speaker">
+                <i class="ph ph-file-text"></i> Logs
+              </button>
+            </div>
+            {% for kind in ['adhan', 'iqamah'] %}
+            {% set schedule_key = 'schedule' if kind == 'adhan' else 'iqamah_schedule' %}
+            {% set schedule = info.get(schedule_key) %}
+            <div class="mt-2 grid grid-cols-5 gap-2 text-center speaker-schedule {% if kind == 'iqamah' %}hidden{% endif %}"
+                 data-speaker="{{ name }}" data-kind="{{ kind }}">
               {% for prayer in prayer_names %}
-              {% set schedule = info.get('schedule') %}
               {% set prayer_days = schedule.get(prayer) if schedule else None %}
               {% set prayer_enabled = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (prayer_days | length > 0) %}
               <div>
                 <div class="text-[10px] text-slate-500 mb-1">{{ prayer }}</div>
                 <input type="checkbox" class="speaker-prayer-toggle accent-emerald-500 w-3.5 h-3.5"
-                       data-speaker="{{ name }}" data-prayer="{{ prayer }}"
+                       data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}"
                        {% if prayer_enabled %}checked{% endif %}>
-                <div class="day-picker mt-1 hidden" data-speaker="{{ name }}" data-prayer="{{ prayer }}">
+                <div class="day-picker mt-1 hidden" data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}">
                   {% for day_idx, day_label in [(0,'M'),(1,'T'),(2,'W'),(3,'T'),(4,'F'),(5,'S'),(6,'S')] %}
                   {% set day_active = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (day_idx in prayer_days) %}
                   <button type="button"
                           class="speaker-day-btn w-5 h-5 text-[9px] rounded-full m-0.5
                                  {% if day_active %}bg-emerald-600 text-white{% else %}bg-slate-600 text-slate-400{% endif %}"
-                          data-speaker="{{ name }}" data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
+                          data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
                   {% endfor %}
                 </div>
               </div>
               {% endfor %}
             </div>
+            {% endfor %}
             <button onclick="toggleSpeakerDayPickers('{{ name }}')"
                     class="mt-2 text-xs text-slate-400 hover:text-slate-300 underline">
               Customize days
             </button>
+            {% if info.get('iqamah_schedule') is none %}
+            <p class="mt-1 text-[10px] text-slate-500 italic speaker-iqamah-hint"
+               data-speaker="{{ name }}">
+              Iqamah inherits the Adhan schedule until you customise it here.
+            </p>
+            {% endif %}
           </details>
         </div>
         {% endfor %}
@@ -529,44 +564,23 @@
       </div>
     </section>
 
-    <!-- WiFi Configuration -->
+    <!-- WiFi status (read-only — active management requires SSH) -->
     <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
-            <i class="ph ph-wifi-high"></i> WiFi
-          </h2>
-          <p id="wifi-status" class="text-slate-400 text-sm mt-1">Loading...</p>
-        </div>
-        <button onclick="scanWifi()" id="wifi-scan-btn"
-                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors
-                       inline-flex items-center gap-1.5">
-          <i class="ph ph-magnifying-glass"></i> Scan Networks
-        </button>
+      <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2 mb-2">
+        <i class="ph ph-wifi-high"></i> WiFi
+      </h2>
+      <p id="wifi-status" class="text-slate-300 text-sm">Checking network status...</p>
+      <div class="mt-3 bg-slate-700/40 border border-slate-600/50 rounded-lg p-3 text-xs text-slate-400">
+        <p class="flex items-start gap-2">
+          <i class="ph ph-info text-slate-300 mt-0.5"></i>
+          <span>
+            To change the network, SSH to the Pi and run:
+            <code class="ml-1 px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded">sudo nmcli device wifi list</code>
+            then
+            <code class="ml-1 px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded">sudo nmcli device wifi connect "SSID" password "…"</code>.
+          </span>
+        </p>
       </div>
-
-      <!-- Network list -->
-      <div id="wifi-networks" class="space-y-2 mb-4 hidden"></div>
-
-      <!-- Manual connect form -->
-      <details class="group">
-        <summary class="cursor-pointer text-sm text-slate-400 hover:text-slate-200 select-none">
-          Manual connect / hidden network
-        </summary>
-        <div class="mt-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2">
-          <input id="wifi-ssid" type="text" placeholder="Network name (SSID)"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          <input id="wifi-password" type="password" placeholder="Password"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          <button onclick="connectWifi(document.getElementById('wifi-ssid').value, document.getElementById('wifi-password').value)"
-                  class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg transition-colors
-                         inline-flex items-center justify-center gap-1.5">
-            <i class="ph ph-link"></i> Connect
-          </button>
-        </div>
-      </details>
     </section>
 
   </main>
@@ -575,6 +589,41 @@
   <div id="toast"
        class="fixed bottom-6 right-6 bg-emerald-600 text-white px-5 py-3 rounded-xl
               shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+  </div>
+
+  <!-- Speaker log viewer modal -->
+  <div id="log-modal" class="fixed inset-0 z-50 hidden bg-black/70 flex items-center justify-center p-4">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-700">
+        <div>
+          <h3 class="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+            <i class="ph ph-file-text"></i>
+            <span id="log-modal-title">Playback Log</span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">Last 7 days · auto-pruned daily</p>
+        </div>
+        <button onclick="closeLogModal()" class="text-slate-400 hover:text-white p-1">
+          <i class="ph ph-x text-xl"></i>
+        </button>
+      </div>
+      <div id="log-modal-body" class="flex-1 overflow-y-auto p-4 text-sm font-mono">
+        <p class="text-slate-500">Loading...</p>
+      </div>
+      <div class="flex items-center justify-between px-5 py-3 border-t border-slate-700 text-xs">
+        <span id="log-modal-count" class="text-slate-500"></span>
+        <div class="flex gap-2">
+          <button onclick="refreshLogModal()"
+                  class="text-slate-400 hover:text-white px-3 py-1 rounded-md inline-flex items-center gap-1">
+            <i class="ph ph-arrow-clockwise"></i> Refresh
+          </button>
+          <button onclick="clearLogsForCurrentSpeaker()"
+                  class="text-red-400 hover:text-red-300 px-3 py-1 rounded-md inline-flex items-center gap-1"
+                  title="Delete all playback log entries (affects all speakers)">
+            <i class="ph ph-trash"></i> Clear all
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -873,13 +922,54 @@
       });
     }
 
-    // ── Per-speaker schedule ──────────────────────────────────────────────────
+    // ── Per-speaker schedule (Adhan + Iqamah) ─────────────────────────────────
     const ALL_DAYS = [0,1,2,3,4,5,6];
+    const PRAYERS = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
+
+    // Which tab is active for each speaker's schedule editor.  Also tracks
+    // the global editor under key '*'.
+    const activeTab = { '*': 'adhan' };
+
+    function setTabState(btn, active) {
+      btn.classList.toggle('bg-emerald-600', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('bg-slate-600', !active);
+      btn.classList.toggle('text-slate-300', !active);
+    }
+
+    // Per-speaker tab switching
+    document.querySelectorAll('.speaker-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const speaker = btn.dataset.speaker;
+        const kind = btn.dataset.kind;
+        activeTab[speaker] = kind;
+        document.querySelectorAll(`.speaker-tab-btn[data-speaker="${speaker}"]`).forEach(b => {
+          setTabState(b, b.dataset.kind === kind);
+        });
+        document.querySelectorAll(`.speaker-schedule[data-speaker="${speaker}"]`).forEach(grid => {
+          grid.classList.toggle('hidden', grid.dataset.kind !== kind);
+        });
+      });
+    });
+
+    // Global tab switching (Apply-to-all header)
+    document.querySelectorAll('.global-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const kind = btn.dataset.globalTab;
+        activeTab['*'] = kind;
+        document.querySelectorAll('.global-tab-btn').forEach(b => {
+          setTabState(b, b.dataset.globalTab === kind);
+        });
+        const label = document.getElementById('global-tab-label');
+        if (label) label.textContent = kind === 'iqamah' ? 'Iqamah' : 'Adhan';
+      });
+    });
 
     function toggleSpeakerDayPickers(speaker) {
-      document.querySelectorAll(`.speaker-schedule[data-speaker="${speaker}"] .day-picker`).forEach(el => {
-        el.classList.toggle('hidden');
-      });
+      const kind = activeTab[speaker] || 'adhan';
+      document.querySelectorAll(
+        `.speaker-schedule[data-speaker="${speaker}"][data-kind="${kind}"] .day-picker`
+      ).forEach(el => el.classList.toggle('hidden'));
     }
 
     function toggleGlobalDayPickers() {
@@ -888,20 +978,14 @@
       });
     }
 
-    // Per-speaker prayer toggle: enable/disable a prayer for this speaker
+    // Per-speaker prayer toggle: enable/disable a prayer for this speaker+kind
     document.querySelectorAll('.speaker-prayer-toggle').forEach(cb => {
       cb.addEventListener('change', async () => {
-        const speaker = cb.dataset.speaker;
-        const schedule = buildScheduleForSpeaker(speaker);
-        await fetch('/api/speakers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [speaker]: { schedule } }),
-        });
+        await saveSpeakerSchedule(cb.dataset.speaker, cb.dataset.kind);
       });
     });
 
-    // Day button click: toggle a specific day for a prayer on a speaker
+    // Day button click: toggle a specific day for a prayer on a speaker+kind
     document.querySelectorAll('.speaker-day-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const isActive = btn.classList.contains('bg-emerald-600');
@@ -909,22 +993,31 @@
         btn.classList.toggle('text-white', !isActive);
         btn.classList.toggle('bg-slate-600', isActive);
         btn.classList.toggle('text-slate-400', isActive);
-        const speaker = btn.dataset.speaker;
-        const schedule = buildScheduleForSpeaker(speaker);
-        await fetch('/api/speakers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [speaker]: { schedule } }),
-        });
+        await saveSpeakerSchedule(btn.dataset.speaker, btn.dataset.kind);
       });
     });
 
-    function buildScheduleForSpeaker(speaker) {
+    async function saveSpeakerSchedule(speaker, kind) {
+      const schedule = buildScheduleForSpeaker(speaker, kind);
+      const field = kind === 'iqamah' ? 'iqamah_schedule' : 'schedule';
+      await fetch('/api/speakers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [speaker]: { [field]: schedule } }),
+      });
+      if (kind === 'iqamah') {
+        const hint = document.querySelector(`.speaker-iqamah-hint[data-speaker="${speaker}"]`);
+        if (hint) hint.classList.add('hidden');
+      }
+    }
+
+    function buildScheduleForSpeaker(speaker, kind) {
       const schedule = {};
-      const container = document.querySelector(`.speaker-schedule[data-speaker="${speaker}"]`);
+      const container = document.querySelector(
+        `.speaker-schedule[data-speaker="${speaker}"][data-kind="${kind}"]`
+      );
       if (!container) return null;
-      const prayers = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
-      prayers.forEach(prayer => {
+      PRAYERS.forEach(prayer => {
         const toggle = container.querySelector(`.speaker-prayer-toggle[data-prayer="${prayer}"]`);
         if (!toggle || !toggle.checked) {
           schedule[prayer] = [];
@@ -944,7 +1037,7 @@
       return schedule;
     }
 
-    // Global day button toggle
+    // Global day button toggle (visual only; applied on "Apply to All")
     document.querySelectorAll('.global-day-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         btn.classList.toggle('bg-emerald-600');
@@ -956,8 +1049,7 @@
 
     async function applyScheduleToAll() {
       const schedule = {};
-      const prayers = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
-      prayers.forEach(prayer => {
+      PRAYERS.forEach(prayer => {
         const toggle = document.querySelector(`.global-prayer-toggle[data-prayer="${prayer}"]`);
         if (!toggle || !toggle.checked) {
           schedule[prayer] = [];
@@ -970,16 +1062,137 @@
         });
         schedule[prayer] = days.length > 0 ? days : ALL_DAYS.slice();
       });
+      const kind = activeTab['*'] || 'adhan';
       const resp = await fetch('/api/speakers/schedule/apply-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedule }),
+        body: JSON.stringify({ schedule, kind }),
       });
       if (resp.ok) {
-        toast('Schedule applied to all speakers');
+        toast(`${kind === 'iqamah' ? 'Iqamah' : 'Adhan'} schedule applied to all speakers`);
         setTimeout(() => location.reload(), 1000);
       } else toast('Failed to apply schedule', true);
     }
+
+    // ── Playback log viewer ───────────────────────────────────────────────────
+    // All dynamic values (speaker names, error messages, event names) come
+    // from mDNS or exception strings, so rows are built with createElement +
+    // textContent rather than innerHTML to avoid any XSS risk.
+    let logModalSpeaker = null;
+
+    function openLogModal() {
+      document.getElementById('log-modal').classList.remove('hidden');
+    }
+
+    function closeLogModal() {
+      document.getElementById('log-modal').classList.add('hidden');
+      logModalSpeaker = null;
+    }
+
+    async function viewSpeakerLogs(speaker) {
+      logModalSpeaker = speaker;
+      document.getElementById('log-modal-title').textContent = `Playback log — ${speaker}`;
+      openLogModal();
+      await refreshLogModal();
+    }
+
+    function makeLogRow(entry) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2 py-1 border-b border-slate-700/50';
+
+      const icon = document.createElement('i');
+      icon.className = entry.ok
+        ? 'ph ph-check-circle text-emerald-400'
+        : 'ph ph-x-circle text-red-400';
+      row.appendChild(icon);
+
+      const when = document.createElement('span');
+      when.className = 'text-slate-500 text-xs';
+      const ts = new Date(entry.ts);
+      when.textContent = ts.toLocaleString(undefined, {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+      row.appendChild(when);
+
+      const ev = document.createElement('span');
+      ev.className = 'text-slate-300';
+      ev.textContent = entry.prayer ? `${entry.event} ${entry.prayer}` : entry.event;
+      row.appendChild(ev);
+
+      const status = document.createElement('span');
+      status.className = entry.ok
+        ? 'ml-auto text-emerald-400'
+        : 'ml-auto text-red-400';
+      status.textContent = entry.ok ? 'OK' : 'FAIL';
+      row.appendChild(status);
+
+      const elapsed = document.createElement('span');
+      elapsed.className = 'text-slate-500 text-xs w-16 text-right';
+      elapsed.textContent = `${entry.elapsed_ms} ms`;
+      row.appendChild(elapsed);
+
+      if (entry.error) {
+        const err = document.createElement('span');
+        err.className = 'text-slate-500 text-xs';
+        err.textContent = `(${entry.error})`;
+        row.appendChild(err);
+      }
+
+      return row;
+    }
+
+    async function refreshLogModal() {
+      const body = document.getElementById('log-modal-body');
+      const count = document.getElementById('log-modal-count');
+      body.replaceChildren();
+      const loading = document.createElement('p');
+      loading.className = 'text-slate-500';
+      loading.textContent = 'Loading...';
+      body.appendChild(loading);
+
+      const params = new URLSearchParams({ limit: '100' });
+      if (logModalSpeaker) params.set('speaker', logModalSpeaker);
+      try {
+        const resp = await fetch(`/api/playback-log?${params}`);
+        const data = await resp.json();
+        body.replaceChildren();
+        if (!data.entries || data.entries.length === 0) {
+          const empty = document.createElement('p');
+          empty.className = 'text-slate-500 text-sm';
+          empty.textContent = 'No playback attempts recorded yet for this speaker.';
+          body.appendChild(empty);
+          count.textContent = '';
+          return;
+        }
+        data.entries.forEach(entry => body.appendChild(makeLogRow(entry)));
+        count.textContent = `${data.count} entr${data.count === 1 ? 'y' : 'ies'}`;
+      } catch (e) {
+        body.replaceChildren();
+        const fail = document.createElement('p');
+        fail.className = 'text-red-400 text-sm';
+        fail.textContent = 'Failed to load logs.';
+        body.appendChild(fail);
+      }
+    }
+
+    async function clearLogsForCurrentSpeaker() {
+      if (!confirm('Delete all playback log entries for every speaker?')) return;
+      const resp = await fetch('/api/playback-log?older_than_days=0', { method: 'DELETE' });
+      if (resp.ok) {
+        const data = await resp.json();
+        toast(`Cleared ${data.removed} log entr${data.removed === 1 ? 'y' : 'ies'}`);
+        await refreshLogModal();
+      } else toast('Failed to clear logs', true);
+    }
+
+    // Dismiss modal with Escape or backdrop click
+    document.getElementById('log-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'log-modal') closeLogModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeLogModal();
+    });
 
     // ── Audio preview ─────────────────────────────────────────────────────────
     function previewAdhan(prayer) {
@@ -992,87 +1205,24 @@
       player.play();
     }
 
-    // ── WiFi ──────────────────────────────────────────────────────────────────
+    // ── WiFi status (read-only; actual changes happen via SSH) ───────────────
     async function loadWifiStatus() {
+      const el = document.getElementById('wifi-status');
       try {
         const resp = await fetch('/api/wifi/status');
         const data = await resp.json();
-        const el = document.getElementById('wifi-status');
         if (data.connection && data.connection !== '--') {
           el.textContent = `Connected to "${data.connection}"`;
           el.classList.add('text-emerald-400');
-        } else if (data.state) {
+        } else if (data.state && data.state !== 'unknown') {
           el.textContent = `Status: ${data.state}`;
         } else if (data.error) {
           el.textContent = data.error;
+        } else {
+          el.textContent = 'WiFi status unavailable.';
         }
-      } catch {}
-    }
-
-    async function scanWifi() {
-      const btn = document.getElementById('wifi-scan-btn');
-      const container = document.getElementById('wifi-networks');
-      btn.textContent = 'Scanning...'; btn.disabled = true;
-      container.innerHTML = '<p class="text-slate-500 text-sm">Scanning...</p>';
-      container.classList.remove('hidden');
-      try {
-        const resp = await fetch('/api/wifi/networks');
-        const data = await resp.json();
-        if (data.error) {
-          container.innerHTML = `<p class="text-red-400 text-sm">${data.error}</p>`;
-          return;
-        }
-        if (!data.networks.length) {
-          container.innerHTML = '<p class="text-slate-500 text-sm">No networks found.</p>';
-          return;
-        }
-        container.innerHTML = data.networks.map(n => {
-          const bars = n.signal > 66 ? '▂▄▆█' : n.signal > 33 ? '▂▄▆░' : '▂▄░░';
-          const lock = n.security !== 'Open' ? '🔒 ' : '';
-          const active = n.connected ? ' border border-emerald-500' : '';
-          return `<div class="flex items-center justify-between bg-slate-700/50 rounded-lg px-4 py-3${active}">
-            <div>
-              <span class="font-medium">${lock}${n.ssid}</span>
-              <span class="ml-3 text-slate-500 text-xs font-mono">${bars}</span>
-              ${n.connected ? '<span class="ml-2 text-xs text-emerald-400">✓ Connected</span>' : ''}
-            </div>
-            ${n.connected ? '' : `<button onclick="promptConnect('${n.ssid.replace(/'/g, "\\'")}', ${n.security === 'Open'})"
-              class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400 px-3 py-1 rounded-lg transition-colors">
-              Connect
-            </button>`}
-          </div>`;
-        }).join('');
-      } catch (e) {
-        container.innerHTML = '<p class="text-red-400 text-sm">Scan failed.</p>';
-      }
-      btn.textContent = 'Scan Networks'; btn.disabled = false;
-    }
-
-    function promptConnect(ssid, isOpen) {
-      document.getElementById('wifi-ssid').value = ssid;
-      if (!isOpen) {
-        const pw = prompt(`Password for "${ssid}":`);
-        if (pw === null) return;
-        connectWifi(ssid, pw);
-      } else {
-        connectWifi(ssid, '');
-      }
-    }
-
-    async function connectWifi(ssid, password) {
-      if (!ssid) return toast('Enter an SSID', true);
-      toast(`Connecting to "${ssid}"...`);
-      const resp = await fetch('/api/wifi/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ssid, password }),
-      });
-      const data = await resp.json();
-      if (resp.ok) {
-        toast(`Connected to "${ssid}"!`);
-        loadWifiStatus();
-      } else {
-        toast(data.error || 'Connection failed', true);
+      } catch {
+        el.textContent = 'WiFi status unavailable.';
       }
     }
 

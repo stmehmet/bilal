@@ -4,22 +4,32 @@ import datetime
 import logging
 import os
 import socket
+import threading
+import time
 
 from zoneinfo import ZoneInfo
 
 from adhanpy.PrayerTimes import PrayerTimes
 from adhanpy.calculation.CalculationMethod import CalculationMethod
+from apscheduler.events import EVENT_JOB_MISSED
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
+import playback_log
 from config import (
     AUDIO_DIR,
     PRAYER_NAMES,
     config_changed_since,
     load_config,
+    save_config,
 )
-from discovery import connect_speakers_direct, discover_chromecasts, play_on_all
+from discovery import (
+    connect_speakers_direct,
+    discover_chromecasts,
+    get_device_metadata,
+    play_on_all,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +50,44 @@ METHOD_MAP = {
     "Turkey": CalculationMethod.MUSLIM_WORLD_LEAGUE,
 }
 
+# How many seconds before adhan/iqamah we fire a pre-warm.  Long enough to
+# absorb a serial mDNS fallback for several speakers, short enough not to
+# wake devices unnecessarily early.
+PREWARM_SECONDS = 90
 
-def _get_local_ip() -> str:
-    """Return the Pi's LAN IP address for serving audio files."""
+# Pre-warmed devices older than this are discarded as stale.
+PREWARM_TTL_SECONDS = 180
+
+# Lock held for the full duration of a playback trigger.  ``_check_config_change``
+# skips rescheduling while a playback is in flight so a mid-adhan save cannot
+# remove a running job.
+_trigger_lock = threading.Lock()
+
+# Keyed by prayer name; populated by pre-warm, consumed by playback.
+_prewarm_cache: dict[str, dict] = {}
+_prewarm_cache_lock = threading.Lock()
+
+
+def _get_local_ip() -> str | None:
+    """Return the Pi's LAN IP address for serving audio files.
+
+    Returns None on failure instead of silently falling back to
+    ``127.0.0.1`` — a localhost URL would leave speakers with nothing to
+    stream, producing a silent failure.
+    """
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
+    except Exception as exc:
+        logger.error("Could not determine local IP: %s", exc)
+        return None
+    if ip.startswith("127.") or ip == "0.0.0.0":
+        logger.error("Local IP resolved to loopback (%s); skipping playback", ip)
+        return None
+    return ip
 
 
 def compute_prayer_times(config: dict, date: datetime.date | None = None) -> dict:
@@ -169,163 +206,305 @@ def _resolve_audio_file(prayer_name: str, config: dict) -> str | None:
     return None
 
 
+def _filter_by_schedule(
+    enabled: list[str],
+    speakers: dict,
+    prayer_name: str | None,
+    timezone: str,
+    *,
+    schedule_key: str,
+) -> list[str]:
+    """Filter enabled speakers by the given per-speaker weekday schedule.
+
+    ``schedule_key`` is ``"schedule"`` for adhan or ``"iqamah_schedule"`` for
+    iqamah.  A speaker with no entry for ``schedule_key`` falls back to the
+    ``"schedule"`` value (backward compatible: iqamah inherits adhan's
+    schedule until the user sets one explicitly).
+    """
+    if not prayer_name or not enabled:
+        return enabled
+    try:
+        today = datetime.datetime.now(ZoneInfo(timezone)).weekday()
+    except Exception:
+        today = datetime.datetime.now(pytz.UTC).weekday()
+
+    result: list[str] = []
+    for name in enabled:
+        info = speakers.get(name, {})
+        schedule = info.get(schedule_key)
+        if schedule is None and schedule_key != "schedule":
+            # Inherit adhan schedule when iqamah schedule isn't set
+            schedule = info.get("schedule")
+        if schedule is None:
+            result.append(name)
+            continue
+        if prayer_name not in schedule:
+            result.append(name)
+            continue
+        days = schedule[prayer_name]
+        if days is None or today in days:
+            result.append(name)
+        else:
+            logger.info(
+                "  %s skipped for %s %s (not scheduled today)",
+                name, prayer_name, schedule_key.replace("_schedule", "") or "adhan",
+            )
+    return result
+
+
+def _get_prewarmed(prayer_name: str | None) -> dict:
+    """Return freshly pre-warmed devices for a prayer, or empty dict."""
+    if not prayer_name:
+        return {}
+    with _prewarm_cache_lock:
+        entry = _prewarm_cache.pop(prayer_name, None)
+    if not entry:
+        return {}
+    if time.time() - entry["ts"] > PREWARM_TTL_SECONDS:
+        logger.info("Pre-warm cache for %s is stale, discarding", prayer_name)
+        return {}
+    return entry.get("devices", {})
+
+
+def _store_prewarm(prayer_name: str | None, devices: dict) -> None:
+    if not prayer_name:
+        return
+    with _prewarm_cache_lock:
+        _prewarm_cache[prayer_name] = {"devices": devices, "ts": time.time()}
+
+
+def _persist_discovered_hosts(devices: dict, speakers_config: dict) -> bool:
+    """Update saved host/port for speakers we reached via mDNS.
+
+    Returns True if anything was persisted.  Keeping the stored host fresh
+    means tomorrow's direct-connect works even if the router handed out a
+    new lease overnight.
+    """
+    meta = get_device_metadata(devices)
+    changed = False
+    for name, info in meta.items():
+        host = info.get("host")
+        if not host:
+            continue
+        port = info.get("port", 8009)
+        saved = speakers_config.get(name, {})
+        if saved.get("host") == host and saved.get("port", 8009) == port:
+            continue
+        saved["host"] = host
+        saved["port"] = port
+        speakers_config[name] = saved
+        changed = True
+        logger.info("Refreshed host for %s -> %s:%d", name, host, port)
+    return changed
+
+
+def _resolve_devices(
+    speakers_config: dict,
+    enabled: list[str],
+    prayer_name: str | None,
+) -> dict:
+    """Return connected Chromecast objects for enabled speakers.
+
+    Tries (in order): fresh pre-warm cache, direct-connect by saved host,
+    mDNS fallback.  Any new hosts discovered via mDNS are persisted back
+    to config so future direct-connects hit the right IP.
+    """
+    devices = _get_prewarmed(prayer_name)
+    if devices:
+        present = [n for n in enabled if n in devices]
+        if len(present) == len(enabled):
+            logger.info("Using pre-warmed connections for %d speaker(s)", len(present))
+            return {n: devices[n] for n in present}
+        # Partial hit — keep what we have, look up the rest.
+        logger.info(
+            "Pre-warm had %d/%d speakers; resolving the rest",
+            len(present), len(enabled),
+        )
+        devices = {n: devices[n] for n in present}
+    else:
+        devices = {}
+
+    missing = [n for n in enabled if n not in devices]
+    if missing:
+        direct = connect_speakers_direct(speakers_config, missing, timeout=10)
+        devices.update(direct)
+
+    still_missing = [n for n in enabled if n not in devices]
+    if still_missing:
+        logger.info("  mDNS fallback for: %s", still_missing)
+        discovered = discover_chromecasts(timeout=15, use_cache=False)
+        newly_found = {n: discovered[n] for n in still_missing if n in discovered}
+        devices.update(newly_found)
+
+        if newly_found:
+            # Persist any freshly-discovered IPs so we don't need mDNS next time
+            try:
+                current = load_config()
+                speakers = current.get("speakers", {})
+                if _persist_discovered_hosts(newly_found, speakers):
+                    current["speakers"] = speakers
+                    save_config(current)
+            except Exception:
+                logger.exception("Failed to persist refreshed speaker hosts")
+
+    return devices
+
+
 def _play_on_speakers(
     media_url: str,
     config: dict,
     event_label: str,
     prayer_name: str | None = None,
+    *,
+    event_type: str = "adhan",
 ) -> None:
     """Play audio on all enabled Chromecast speakers.
 
-    When *prayer_name* is given, each speaker's per-prayer schedule is checked
-    against today's weekday.  A missing ``schedule`` key means "all days" for
-    backward compatibility with configs that predate this feature.
+    ``event_type`` is one of ``"adhan" | "iqamah" | "friday_sela"`` and
+    picks which per-speaker weekday schedule to honour.
     """
     volume = config.get("volume", 0.5)
-
-    # --- Chromecast playback ---
     speakers = config.get("speakers", {})
     enabled = [name for name, info in speakers.items() if info.get("enabled", False)]
 
-    # Per-speaker schedule filtering
-    if prayer_name and enabled:
-        tz_name = config.get("timezone", "UTC")
-        try:
-            today = datetime.datetime.now(ZoneInfo(tz_name)).weekday()
-        except Exception:
-            today = datetime.datetime.now(pytz.UTC).weekday()
-        scheduled = []
-        for name in enabled:
-            schedule = speakers[name].get("schedule")
-            if schedule is None:
-                # No schedule = play every day (backward compatible)
-                scheduled.append(name)
-            elif prayer_name in schedule:
-                days = schedule[prayer_name]
-                if days is None or today in days:
-                    scheduled.append(name)
-                else:
-                    logger.info("  %s skipped for %s (not scheduled today)", name, prayer_name)
-            else:
-                # Prayer not listed in schedule = play every day
-                scheduled.append(name)
-        enabled = scheduled
+    schedule_key = "iqamah_schedule" if event_type == "iqamah" else "schedule"
+    enabled = _filter_by_schedule(
+        enabled, speakers, prayer_name,
+        timezone=config.get("timezone", "UTC"),
+        schedule_key=schedule_key,
+    )
 
-    if enabled:
-        try:
-            # Build per-speaker volume overrides
-            speaker_volumes = {}
-            for name in enabled:
-                sv = speakers[name].get("volume")
-                if sv is not None:
-                    speaker_volumes[name] = sv
+    if not enabled:
+        return
 
-            # 1. Try direct connection by saved host/port (fast, no mDNS)
-            devices = connect_speakers_direct(speakers, enabled, timeout=10)
+    # Per-speaker volume overrides
+    speaker_volumes = {
+        name: speakers[name]["volume"]
+        for name in enabled
+        if speakers[name].get("volume") is not None
+    }
 
-            # 2. Fall back to mDNS discovery for any speakers not reached directly
-            missing = [n for n in enabled if n not in devices]
-            if missing:
-                logger.info("  mDNS fallback for: %s", missing)
-                discovered = discover_chromecasts(timeout=15, use_cache=False)
-                devices.update({n: discovered[n] for n in missing if n in discovered})
+    try:
+        devices = _resolve_devices(speakers, enabled, prayer_name)
 
-            results = play_on_all(
-                devices, enabled, media_url,
-                volume=volume,
-                speaker_volumes=speaker_volumes or None,
-            )
-            for name, ok in results.items():
-                status = "success" if ok else "FAILED"
-                logger.info("  %s -> %s", name, status)
-        except Exception as exc:
-            logger.error("%s Chromecast playback error: %s", event_label, exc)
+        def _log_result(name: str, ok: bool, elapsed: float, error: str | None) -> None:
+            try:
+                playback_log.record(
+                    event=event_type,
+                    prayer=prayer_name,
+                    speaker=name,
+                    ok=ok,
+                    elapsed_seconds=elapsed,
+                    error=error,
+                )
+            except Exception:
+                logger.exception("Failed to record playback log entry")
 
+        results = play_on_all(
+            devices, enabled, media_url,
+            volume=volume,
+            speaker_volumes=speaker_volumes or None,
+            on_result=_log_result,
+        )
+        for name, ok in results.items():
+            logger.info("  %s -> %s", name, "success" if ok else "FAILED")
+    except Exception as exc:
+        logger.error("%s Chromecast playback error: %s", event_label, exc)
+
+
+def _do_trigger(
+    prayer_name: str,
+    *,
+    event_type: str,
+    event_label: str,
+    audio_file: str | None,
+) -> None:
+    """Shared body for adhan/iqamah/sela triggers.
+
+    Holds ``_trigger_lock`` so the config watcher can't reschedule jobs
+    out from under a firing playback.
+    """
+    with _trigger_lock:
+        config = load_config()
+
+        if _is_dnd_active(config):
+            logger.info("Skipping %s – Do Not Disturb is active", event_label)
+            return
+
+        if event_type == "adhan":
+            audio_file = _resolve_audio_file(prayer_name, config)
+        # iqamah/sela pass their audio_file in already
+
+        if not audio_file:
+            logger.error("Skipping %s – no audio file available", event_label)
+            return
+
+        if not (AUDIO_DIR / audio_file).is_file():
+            logger.warning("Audio file missing for %s: %s", event_label, audio_file)
+            return
+
+        local_ip = _get_local_ip()
+        if local_ip is None:
+            return
+
+        web_port = os.getenv("WEB_PORT", "5000")
+        media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
+
+        logger.info("%s – playing %s", event_label, media_url)
+        _play_on_speakers(media_url, config, event_label, prayer_name=prayer_name, event_type=event_type)
 
 
 def trigger_adhan(prayer_name: str) -> None:
     """Called by the scheduler when it's time for a specific prayer."""
     config = load_config()
-
     if prayer_name in config.get("skip_prayers", []):
         logger.info("Skipping %s (disabled by user)", prayer_name)
         return
-
-    if _is_dnd_active(config):
-        logger.info("Skipping %s – Do Not Disturb is active", prayer_name)
-        return
-
-    # Determine the audio file with validation
-    audio_file = _resolve_audio_file(prayer_name, config)
-    if audio_file is None:
-        logger.error("Skipping adhan for %s – no audio file available", prayer_name)
-        return
-
-    local_ip = _get_local_ip()
-    web_port = os.getenv("WEB_PORT", "5000")
-    media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
-
-    logger.info("Adhan for %s – playing %s", prayer_name, media_url)
-    _play_on_speakers(media_url, config, f"Adhan ({prayer_name})", prayer_name=prayer_name)
+    _do_trigger(
+        prayer_name,
+        event_type="adhan",
+        event_label=f"Adhan ({prayer_name})",
+        audio_file=None,
+    )
 
 
 def trigger_iqamah(prayer_name: str) -> None:
     """Called by the scheduler when it's time for iqamah."""
     config = load_config()
-
     if not config.get("iqamah_enabled", False):
         return
-
     if prayer_name in config.get("skip_prayers", []):
         logger.info("Skipping iqamah for %s (disabled by user)", prayer_name)
         return
-
-    if _is_dnd_active(config):
-        logger.info("Skipping iqamah for %s – Do Not Disturb is active", prayer_name)
-        return
-
     audio_file = config.get("iqamah_audio_file", "iqamah_bell.mp3")
-    if not (AUDIO_DIR / audio_file).is_file():
-        logger.warning("Iqamah audio file missing: %s, skipping", audio_file)
-        return
-
-    local_ip = _get_local_ip()
-    web_port = os.getenv("WEB_PORT", "5000")
-    media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
-
-    logger.info("Iqamah for %s – playing %s", prayer_name, media_url)
-    _play_on_speakers(media_url, config, f"Iqamah ({prayer_name})", prayer_name=prayer_name)
+    _do_trigger(
+        prayer_name,
+        event_type="iqamah",
+        event_label=f"Iqamah ({prayer_name})",
+        audio_file=audio_file,
+    )
 
 
 def trigger_friday_sela() -> None:
     """Called by the scheduler before Friday Dhuhr to play the Sela."""
     config = load_config()
-
     if not config.get("friday_sela_enabled", False):
         return
-
-    if _is_dnd_active(config):
-        logger.info("Skipping Friday Sela – Do Not Disturb is active")
-        return
-
-    audio_file = config.get("friday_sela_audio_file", "sela_cuma_huseyni.mp3")
-    if not (AUDIO_DIR / audio_file).is_file():
-        logger.warning("Friday Sela audio file missing: %s, skipping", audio_file)
-        return
-
-    local_ip = _get_local_ip()
-    web_port = os.getenv("WEB_PORT", "5000")
-    media_url = f"http://{local_ip}:{web_port}/audio/{audio_file}"
-
-    logger.info("Friday Sela – playing %s", media_url)
-    _play_on_speakers(media_url, config, "Friday Sela", prayer_name="Dhuhr")
+    audio_file = config.get("friday_sela_audio_file", "sela_cuma_huseyni_1.mp3")
+    _do_trigger(
+        "Dhuhr",
+        event_type="friday_sela",
+        event_label="Friday Sela",
+        audio_file=audio_file,
+    )
 
 
-def _prewarm_speakers() -> None:
+def _prewarm_speakers(prayer_name: str | None = None) -> None:
     """Connect to all enabled speakers to wake them from sleep.
 
-    Scheduled 2 minutes before each prayer so devices are responsive
-    when the adhan triggers.  Refreshes the discovery cache as a side effect.
+    Scheduled ``PREWARM_SECONDS`` before each prayer.  Stores the resulting
+    Chromecast objects so the playback trigger can reuse them without
+    re-running direct-connect + mDNS.
     """
     config = load_config()
     speakers = config.get("speakers", {})
@@ -333,19 +512,30 @@ def _prewarm_speakers() -> None:
     if not enabled:
         return
 
-    logger.info("Pre-warming %d speaker(s)...", len(enabled))
+    logger.info("Pre-warming %d speaker(s) for %s...", len(enabled), prayer_name or "next event")
 
-    # Try direct connect first (fast)
     devices = connect_speakers_direct(speakers, enabled, timeout=10)
 
-    # mDNS fallback for any not reached directly
     missing = [n for n in enabled if n not in devices]
     if missing:
         discovered = discover_chromecasts(timeout=15, use_cache=False)
-        devices.update({n: discovered[n] for n in missing if n in discovered})
+        newly_found = {n: discovered[n] for n in missing if n in discovered}
+        devices.update(newly_found)
+        if newly_found:
+            try:
+                current = load_config()
+                speakers_cur = current.get("speakers", {})
+                if _persist_discovered_hosts(newly_found, speakers_cur):
+                    current["speakers"] = speakers_cur
+                    save_config(current)
+            except Exception:
+                logger.exception("Failed to persist refreshed speaker hosts during pre-warm")
 
-    found = len(devices)
-    logger.info("Pre-warm complete: %d/%d speakers ready", found, len(enabled))
+    _store_prewarm(prayer_name, devices)
+    logger.info(
+        "Pre-warm complete: %d/%d speakers ready for %s",
+        len(devices), len(enabled), prayer_name or "next event",
+    )
 
 
 class AdhanSchedulerService:
@@ -361,10 +551,10 @@ class AdhanSchedulerService:
         self.scheduler = BackgroundScheduler()
         self._job_ids: list[str] = []
         self._last_config_check: float = 0.0
+        self.scheduler.add_listener(self._on_misfire, EVENT_JOB_MISSED)
 
     def start(self) -> None:
         """Start the scheduler and set up the daily reschedule job."""
-        import time
         self.scheduler.start()
         # Warn about missing audio files at startup
         config = load_config()
@@ -391,16 +581,45 @@ class AdhanSchedulerService:
             replace_existing=True,
         )
 
+        # Prune the playback log daily so it never grows unbounded
+        self.scheduler.add_job(
+            playback_log.purge,
+            CronTrigger(hour=3, minute=17),
+            id="playback_log_purge",
+            replace_existing=True,
+        )
+
         logger.info("Adhan scheduler started")
 
+    def _on_misfire(self, event) -> None:
+        """APScheduler fires this when a job missed its run_date within grace.
+
+        With a 60s grace we expect zero misfires in normal operation; any
+        misfire is a real signal worth surfacing.
+        """
+        logger.warning(
+            "Job %s missed its scheduled time of %s — check system load / clock drift",
+            event.job_id, event.scheduled_run_time,
+        )
+
     def _check_config_change(self) -> None:
-        """Reschedule prayers if config has been updated."""
-        import time
+        """Reschedule prayers if config has been updated.
+
+        Skipped while a playback trigger is holding ``_trigger_lock`` so we
+        never rip jobs out of the scheduler mid-fire.
+        """
         try:
-            if config_changed_since(self._last_config_check):
+            if not config_changed_since(self._last_config_check):
+                return
+            if not _trigger_lock.acquire(blocking=False):
+                logger.debug("Config change seen but a playback is in flight; retrying later")
+                return
+            try:
                 logger.info("Config change detected, rescheduling prayers")
                 self.schedule_today()
                 self._last_config_check = time.time()
+            finally:
+                _trigger_lock.release()
         except Exception as exc:
             logger.error("Error checking config change: %s", exc)
 
@@ -412,6 +631,10 @@ class AdhanSchedulerService:
             except Exception as exc:
                 logger.debug("Could not remove job %s: %s", jid, exc)
         self._job_ids.clear()
+
+        # Discard any pre-warmed devices left from yesterday.
+        with _prewarm_cache_lock:
+            _prewarm_cache.clear()
 
         config = load_config()
         if not config.get("setup_complete"):
@@ -430,14 +653,14 @@ class AdhanSchedulerService:
                 logger.debug("Skipping %s (already passed at %s)", prayer, pt)
                 continue
 
-            # Pre-warm speakers 30 seconds before adhan
-            prewarm_time = pt - datetime.timedelta(seconds=30)
+            prewarm_time = pt - datetime.timedelta(seconds=PREWARM_SECONDS)
             if prewarm_time > now:
                 pw_id = f"prewarm_{prayer}"
                 self.scheduler.add_job(
                     _prewarm_speakers,
                     "date",
                     run_date=prewarm_time,
+                    args=[prayer],
                     id=pw_id,
                     replace_existing=True,
                     misfire_grace_time=60,
@@ -452,18 +675,36 @@ class AdhanSchedulerService:
                 args=[prayer],
                 id=job_id,
                 replace_existing=True,
-                misfire_grace_time=300,
+                misfire_grace_time=60,
             )
             self._job_ids.append(job_id)
-            logger.info("Scheduled %s at %s (pre-warm at %s, 30s before)", prayer, pt.strftime("%H:%M:%S"), prewarm_time.strftime("%H:%M:%S"))
+            logger.info(
+                "Scheduled %s at %s (pre-warm at %s, %ds before)",
+                prayer, pt.strftime("%H:%M:%S"),
+                prewarm_time.strftime("%H:%M:%S"), PREWARM_SECONDS,
+            )
 
-        # --- Iqamah jobs ---
         if config.get("iqamah_enabled", False):
             iqamah_times = compute_iqamah_times(config, times)
             for prayer in PRAYER_NAMES:
                 iq_time = iqamah_times.get(prayer)
                 if iq_time is None or iq_time <= now:
                     continue
+
+                iq_prewarm_time = iq_time - datetime.timedelta(seconds=PREWARM_SECONDS)
+                if iq_prewarm_time > now:
+                    pw_id = f"prewarm_iqamah_{prayer}"
+                    self.scheduler.add_job(
+                        _prewarm_speakers,
+                        "date",
+                        run_date=iq_prewarm_time,
+                        args=[prayer],
+                        id=pw_id,
+                        replace_existing=True,
+                        misfire_grace_time=60,
+                    )
+                    self._job_ids.append(pw_id)
+
                 job_id = f"iqamah_{prayer}"
                 self.scheduler.add_job(
                     trigger_iqamah,
@@ -472,29 +713,28 @@ class AdhanSchedulerService:
                     args=[prayer],
                     id=job_id,
                     replace_existing=True,
-                    misfire_grace_time=300,
+                    misfire_grace_time=60,
                 )
                 self._job_ids.append(job_id)
                 logger.info("Scheduled iqamah %s at %s", prayer, iq_time.strftime("%H:%M:%S"))
 
-        # --- Friday Sela job (before Jummah Dhuhr) ---
         if config.get("friday_sela_enabled", False) and now.weekday() == 4:
             dhuhr_time = times.get("Dhuhr")
             offset = config.get("friday_sela_offset", 45)
             if dhuhr_time:
                 sela_time = dhuhr_time - datetime.timedelta(minutes=offset)
                 if sela_time > now and sela_time < dhuhr_time:
-                    # Pre-warm 30 seconds before sela
-                    pw_time = sela_time - datetime.timedelta(seconds=30)
+                    pw_time = sela_time - datetime.timedelta(seconds=PREWARM_SECONDS)
                     if pw_time > now:
                         pw_id = "prewarm_friday_sela"
                         self.scheduler.add_job(
                             _prewarm_speakers,
                             "date",
                             run_date=pw_time,
+                            args=["Dhuhr"],
                             id=pw_id,
                             replace_existing=True,
-                            misfire_grace_time=120,
+                            misfire_grace_time=60,
                         )
                         self._job_ids.append(pw_id)
 
@@ -505,7 +745,7 @@ class AdhanSchedulerService:
                         run_date=sela_time,
                         id=job_id,
                         replace_existing=True,
-                        misfire_grace_time=300,
+                        misfire_grace_time=60,
                     )
                     self._job_ids.append(job_id)
                     logger.info(

@@ -25,6 +25,7 @@ _mock_modules = {
     "apscheduler.schedulers.background": lambda m: setattr(m, "BackgroundScheduler", MagicMock),
     "apscheduler.triggers": lambda m: None,
     "apscheduler.triggers.cron": lambda m: setattr(m, "CronTrigger", MagicMock),
+    "apscheduler.events": lambda m: setattr(m, "EVENT_JOB_MISSED", 1),
     "sqlalchemy": lambda m: None,
 }
 for mod_name, setup_fn in _mock_modules.items():

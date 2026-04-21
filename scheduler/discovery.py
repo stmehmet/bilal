@@ -3,6 +3,7 @@
 import logging
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pychromecast
 
@@ -13,6 +14,11 @@ _cache_lock = threading.Lock()
 _cached_devices: dict[str, pychromecast.Chromecast] = {}
 _cache_timestamp: float = 0
 CACHE_TTL_SECONDS = 600  # 10 minutes (bumped from 5 — direct-connect is the fast path now)
+
+# Group devices take 1–3s to propagate volume through the mesh; sending
+# play_media immediately after set_volume can arrive mid-sync.  A small
+# gap removes the race.
+GROUP_VOLUME_STAGGER_SECONDS = 2.0
 
 
 def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str, pychromecast.Chromecast]:
@@ -73,24 +79,44 @@ def connect_speakers_direct(
     enabled_names: list[str],
     timeout: float = 10,
 ) -> dict[str, pychromecast.Chromecast]:
-    """Connect to enabled speakers using stored host/port (no mDNS).
+    """Connect to enabled speakers using stored host/port (no mDNS), in parallel.
 
-    Tries direct connection for each speaker that has a saved host.
-    Returns a mapping of friendly_name -> Chromecast for successful connections.
+    Previous behaviour was serial: N speakers with unreachable hosts took N *
+    timeout seconds before the mDNS fallback even started.  Now all speakers
+    connect concurrently so the worst-case is a single timeout regardless of
+    fleet size.
     """
-    devices = {}
+    targets: list[tuple[str, str, int]] = []
     for name in enabled_names:
         info = speakers_config.get(name, {})
         host = info.get("host")
-        port = info.get("port", 8009)
         if not host:
             continue
-        cc = connect_by_host(host, port, timeout=timeout)
-        if cc:
-            devices[name] = cc
-            logger.info("Direct connect OK: %s (%s:%d)", name, host, port)
-        else:
-            logger.info("Direct connect failed: %s (%s:%d), will fall back to mDNS", name, host, port)
+        port = info.get("port", 8009)
+        targets.append((name, host, port))
+
+    if not targets:
+        return {}
+
+    devices: dict[str, pychromecast.Chromecast] = {}
+    max_workers = min(len(targets), 8)
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="direct-cc") as pool:
+        futures = {
+            pool.submit(connect_by_host, host, port, timeout): (name, host, port)
+            for name, host, port in targets
+        }
+        for fut in as_completed(futures):
+            name, host, port = futures[fut]
+            try:
+                cc = fut.result()
+            except Exception as exc:
+                logger.info("Direct connect errored: %s (%s:%d): %s", name, host, port, exc)
+                continue
+            if cc:
+                devices[name] = cc
+                logger.info("Direct connect OK: %s (%s:%d)", name, host, port)
+            else:
+                logger.info("Direct connect failed: %s (%s:%d), will fall back to mDNS", name, host, port)
     return devices
 
 
@@ -124,40 +150,69 @@ def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict
     return meta
 
 
+def _is_group_device(device: pychromecast.Chromecast) -> bool:
+    return getattr(device.cast_info, "cast_type", "cast") == "group"
+
+
+def _play_once(
+    device: pychromecast.Chromecast,
+    media_url: str,
+    content_type: str,
+    volume: float,
+) -> bool:
+    device.wait()
+    device.set_volume(volume)
+    # Groups sync volume across their members for a couple of seconds; sending
+    # play_media during that window can produce partial audio or no audio at
+    # all.  Give them a moment to settle.
+    if _is_group_device(device):
+        time.sleep(GROUP_VOLUME_STAGGER_SECONDS)
+    mc = device.media_controller
+    mc.play_media(media_url, content_type)
+    mc.block_until_active(timeout=30)
+    return True
+
+
 def play_on_chromecast(
     device: pychromecast.Chromecast,
     media_url: str,
     content_type: str = "audio/mpeg",
     volume: float = 0.5,
+    retries: int = 1,
 ) -> bool:
-    """Cast an audio file to a single Chromecast device.
+    """Cast an audio file to a single Chromecast device with one automatic retry.
 
-    Args:
-        device: A connected Chromecast instance.
-        media_url: HTTP URL to the audio file (served by our web app).
-        content_type: MIME type of the audio.
-        volume: Playback volume 0.0-1.0.
-
-    Returns True on success.
+    Transient TCP hiccups, brief device unreachability, and Google group-mesh
+    syncs produce flaky first attempts; the retry is cheap insurance against
+    a completely missed adhan.
     """
-    try:
-        device.wait()
-        device.set_volume(volume)
-        mc = device.media_controller
-        mc.play_media(media_url, content_type)
-        mc.block_until_active(timeout=30)
-        logger.info("Playing on %s", device.cast_info.friendly_name)
-        return True
-    except pychromecast.error.PyChromecastError as exc:
-        logger.error(
-            "Chromecast error on %s: %s", device.cast_info.friendly_name, exc
-        )
-        return False
-    except (OSError, ConnectionError) as exc:
-        logger.error(
-            "Network error playing on %s: %s", device.cast_info.friendly_name, exc
-        )
-        return False
+    name = device.cast_info.friendly_name
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            _play_once(device, media_url, content_type, volume)
+            if attempt > 0:
+                logger.info("Playing on %s (succeeded on retry %d)", name, attempt)
+            else:
+                logger.info("Playing on %s", name)
+            return True
+        except pychromecast.error.PyChromecastError as exc:
+            last_exc = exc
+            logger.warning(
+                "Chromecast error on %s (attempt %d/%d): %s",
+                name, attempt + 1, retries + 1, exc,
+            )
+        except (OSError, ConnectionError) as exc:
+            last_exc = exc
+            logger.warning(
+                "Network error on %s (attempt %d/%d): %s",
+                name, attempt + 1, retries + 1, exc,
+            )
+        if attempt < retries:
+            time.sleep(3)
+
+    logger.error("%s FAILED after %d attempt(s): %s", name, retries + 1, last_exc)
+    return False
 
 
 def play_on_all(
@@ -166,6 +221,7 @@ def play_on_all(
     media_url: str,
     volume: float = 0.5,
     speaker_volumes: dict[str, float] | None = None,
+    on_result: "callable | None" = None,
 ) -> dict[str, bool]:
     """Play audio on all enabled speakers in parallel.
 
@@ -175,21 +231,27 @@ def play_on_all(
         media_url: HTTP URL to the audio file.
         volume: Default playback volume (used when no per-speaker override).
         speaker_volumes: Optional per-speaker volume overrides.
+        on_result: Optional callback ``fn(name, ok, elapsed_seconds, error)``
+            invoked once per speaker so callers can record per-device metrics
+            without waiting for the whole fan-out.
 
     Returns a dict of device_name -> success.
     """
-    results = {}
+    results: dict[str, bool] = {}
     missing = [n for n in enabled_names if n not in devices]
     for name in missing:
         logger.warning("Speaker '%s' not found on network", name)
         results[name] = False
+        if on_result is not None:
+            try:
+                on_result(name, False, 0.0, "not_found")
+            except Exception:
+                logger.exception("on_result callback raised")
 
     present = [n for n in enabled_names if n in devices]
     if not present:
         return results
 
-    # Play on all speakers concurrently so one slow/stuck device
-    # doesn't delay or block the others.
     threads: list[threading.Thread] = []
     thread_results: dict[str, bool] = {}
     lock = threading.Lock()
@@ -197,7 +259,13 @@ def play_on_all(
     def _play(name: str) -> None:
         vol = speaker_volumes.get(name, volume) if speaker_volumes else volume
         t0 = time.time()
-        ok = play_on_chromecast(devices[name], media_url, volume=vol)
+        error: str | None = None
+        try:
+            ok = play_on_chromecast(devices[name], media_url, volume=vol)
+        except Exception as exc:
+            ok = False
+            error = str(exc)
+            logger.exception("Unexpected error playing on %s", name)
         elapsed = time.time() - t0
         with lock:
             thread_results[name] = ok
@@ -205,6 +273,11 @@ def play_on_all(
             logger.info("  %s responded in %.1fs", name, elapsed)
         else:
             logger.error("  %s FAILED after %.1fs", name, elapsed)
+        if on_result is not None:
+            try:
+                on_result(name, ok, elapsed, error)
+            except Exception:
+                logger.exception("on_result callback raised")
 
     for name in present:
         t = threading.Thread(target=_play, args=(name,), daemon=True)
@@ -219,6 +292,11 @@ def play_on_all(
         if name not in thread_results:
             logger.error("  %s TIMED OUT (no response in 45s)", name)
             thread_results[name] = False
+            if on_result is not None:
+                try:
+                    on_result(name, False, 45.0, "timeout")
+                except Exception:
+                    logger.exception("on_result callback raised")
 
     results.update(thread_results)
     return results
