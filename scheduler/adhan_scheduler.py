@@ -548,29 +548,69 @@ class AdhanSchedulerService:
         # require pickling bound methods (schedule_today, _check_config_change),
         # which APScheduler refuses because they hold a reference to the
         # scheduler itself and cannot be serialized.
-        self.scheduler = BackgroundScheduler()
+        #
+        # Scheduler creation is deferred to start() so the timezone can be
+        # pinned to the user's configured timezone instead of the host OS
+        # default — see start() for why this matters.
+        self.scheduler: BackgroundScheduler | None = None
         self._job_ids: list[str] = []
         self._last_config_check: float = 0.0
-        self.scheduler.add_listener(self._on_misfire, EVENT_JOB_MISSED)
+        self._scheduler_tz_name: str = "UTC"
+
+    def _resolve_tz(self, config: dict) -> tuple[object, str]:
+        """Return (tzinfo, name) from config, falling back to UTC on error."""
+        name = config.get("timezone", "UTC")
+        try:
+            return pytz.timezone(name), name
+        except Exception as exc:
+            logger.warning(
+                "Invalid configured timezone %r: %s — falling back to UTC", name, exc,
+            )
+            return pytz.UTC, "UTC"
+
+    def _install_recurring_jobs(self, tz) -> None:
+        """(Re)install the daily-reschedule and log-purge crons in the given tz.
+
+        Both crons must fire at a wall-clock time in the user's local zone.
+        The daily reschedule in particular HAS to run a few minutes after
+        local midnight: if it instead fires hours later, prayers earlier in
+        the day are already past `now` and get silently dropped from
+        schedule_today().
+        """
+        self.scheduler.add_job(
+            self.schedule_today,
+            CronTrigger(hour=0, minute=1, timezone=tz),
+            id="daily_reschedule",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            playback_log.purge,
+            CronTrigger(hour=3, minute=17, timezone=tz),
+            id="playback_log_purge",
+            replace_existing=True,
+        )
 
     def start(self) -> None:
         """Start the scheduler and set up the daily reschedule job."""
-        self.scheduler.start()
-        # Warn about missing audio files at startup
         config = load_config()
+        tz, tz_name = self._resolve_tz(config)
+        self._scheduler_tz_name = tz_name
+
+        # Pin APScheduler to the configured timezone. Without this it falls
+        # back to the host OS timezone (tzlocal), which on a fresh Pi image
+        # is UTC — making the daily 00:01 cron fire hours before local
+        # midnight and silently drop prayers that have already passed.
+        self.scheduler = BackgroundScheduler(timezone=tz)
+        self.scheduler.add_listener(self._on_misfire, EVENT_JOB_MISSED)
+
+        self.scheduler.start()
         missing = validate_audio_files(config)
         if missing:
             logger.warning("Missing audio files at startup: %s", missing)
         self.schedule_today()
         self._last_config_check = time.time()
 
-        # Reschedule every day at midnight
-        self.scheduler.add_job(
-            self.schedule_today,
-            CronTrigger(hour=0, minute=1),
-            id="daily_reschedule",
-            replace_existing=True,
-        )
+        self._install_recurring_jobs(tz)
 
         # Check for config changes every 30 seconds
         self.scheduler.add_job(
@@ -581,15 +621,7 @@ class AdhanSchedulerService:
             replace_existing=True,
         )
 
-        # Prune the playback log daily so it never grows unbounded
-        self.scheduler.add_job(
-            playback_log.purge,
-            CronTrigger(hour=3, minute=17),
-            id="playback_log_purge",
-            replace_existing=True,
-        )
-
-        logger.info("Adhan scheduler started")
+        logger.info("Adhan scheduler started (timezone=%s)", tz_name)
 
     def _on_misfire(self, event) -> None:
         """APScheduler fires this when a job missed its run_date within grace.
@@ -616,6 +648,18 @@ class AdhanSchedulerService:
                 return
             try:
                 logger.info("Config change detected, rescheduling prayers")
+                config = load_config()
+                new_tz, new_tz_name = self._resolve_tz(config)
+                if new_tz_name != self._scheduler_tz_name:
+                    logger.info(
+                        "Timezone changed: %s -> %s, updating scheduler",
+                        self._scheduler_tz_name, new_tz_name,
+                    )
+                    # Update default tz for newly-added jobs and re-pin the
+                    # recurring crons so they fire at local-midnight again.
+                    self.scheduler.configure(timezone=new_tz)
+                    self._install_recurring_jobs(new_tz)
+                    self._scheduler_tz_name = new_tz_name
                 self.schedule_today()
                 self._last_config_check = time.time()
             finally:
@@ -755,4 +799,5 @@ class AdhanSchedulerService:
                     )
 
     def stop(self) -> None:
-        self.scheduler.shutdown(wait=False)
+        if self.scheduler is not None:
+            self.scheduler.shutdown(wait=False)
