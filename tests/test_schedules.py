@@ -152,6 +152,99 @@ class TestScheduleFilter:
         ) == ["A"]
 
 
+class TestSchedulerTimezone:
+    """The scheduler must run in the configured tz, not the host OS tz.
+
+    Regression: gift units shipped with system tz=UTC had their daily
+    reschedule cron fire 19h before local midnight, dropping every prayer
+    earlier in the day from the schedule.
+    """
+
+    def _bootstrap_scheduler(self, tmp_path, monkeypatch, *, tz_name, setup_complete=True):
+        """Create a scheduler service with a real config but mocked APScheduler."""
+        from unittest.mock import MagicMock
+        import adhan_scheduler
+
+        monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(cfg, "CONFIG_FILE", tmp_path / "config.json")
+        monkeypatch.setattr(adhan_scheduler, "AUDIO_DIR", tmp_path / "audio")
+        (tmp_path / "audio").mkdir(exist_ok=True)
+        cfg.save_config({
+            "latitude": 30.27,
+            "longitude": -97.74,
+            "timezone": tz_name,
+            "setup_complete": setup_complete,
+            "speakers": {},
+        })
+
+        # Each construction of BackgroundScheduler returns a fresh MagicMock so
+        # the test can inspect what timezone it was constructed with and what
+        # cron jobs were registered.
+        scheduler_calls = []
+
+        def fake_scheduler_factory(*args, **kwargs):
+            inst = MagicMock()
+            inst.init_kwargs = kwargs
+            inst.add_job_calls = []
+            inst.add_job.side_effect = lambda *a, **kw: inst.add_job_calls.append((a, kw))
+            scheduler_calls.append(inst)
+            return inst
+
+        monkeypatch.setattr(
+            adhan_scheduler, "BackgroundScheduler", fake_scheduler_factory,
+        )
+
+        # CronTrigger is mocked at conftest-import time; replace with a
+        # capture-only stub so we can read back the timezone= kwarg.
+        cron_calls = []
+
+        def fake_cron(*args, **kwargs):
+            cron_calls.append(kwargs)
+            stub = MagicMock()
+            stub.kwargs = kwargs
+            return stub
+
+        monkeypatch.setattr(adhan_scheduler, "CronTrigger", fake_cron)
+
+        service = adhan_scheduler.AdhanSchedulerService()
+        service.start()
+        return service, scheduler_calls, cron_calls
+
+    def test_scheduler_uses_configured_timezone(self, tmp_path, monkeypatch):
+        service, schedulers, _ = self._bootstrap_scheduler(
+            tmp_path, monkeypatch, tz_name="America/Chicago",
+        )
+        assert len(schedulers) == 1
+        tz = schedulers[0].init_kwargs.get("timezone")
+        # pytz tz objects expose `zone`; ensure it matches what we asked for.
+        assert getattr(tz, "zone", None) == "America/Chicago"
+
+    def test_daily_reschedule_cron_pinned_to_configured_tz(self, tmp_path, monkeypatch):
+        _, _, cron_calls = self._bootstrap_scheduler(
+            tmp_path, monkeypatch, tz_name="America/Chicago",
+        )
+        # Two CronTriggers should be created at startup: daily_reschedule
+        # (00:01) and playback_log_purge (03:17). Both must carry the
+        # configured timezone, not None / host default.
+        assert len(cron_calls) == 2
+        for kwargs in cron_calls:
+            tz = kwargs.get("timezone")
+            assert tz is not None, "CronTrigger created without explicit timezone"
+            assert getattr(tz, "zone", None) == "America/Chicago"
+
+    def test_invalid_timezone_falls_back_to_utc(self, tmp_path, monkeypatch):
+        # setup_complete=False so schedule_today() returns before
+        # compute_prayer_times trips over the bad tz string — we're only
+        # testing the scheduler's own fallback here.
+        service, schedulers, _ = self._bootstrap_scheduler(
+            tmp_path, monkeypatch, tz_name="Not/A_Real_Zone", setup_complete=False,
+        )
+        tz = schedulers[0].init_kwargs.get("timezone")
+        # pytz.UTC has zone "UTC"
+        assert getattr(tz, "zone", None) == "UTC"
+        assert service._scheduler_tz_name == "UTC"
+
+
 class TestLocalIPValidation:
     def test_loopback_returns_none(self, monkeypatch):
         import adhan_scheduler

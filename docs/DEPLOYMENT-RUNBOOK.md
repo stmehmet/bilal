@@ -443,6 +443,14 @@ tailscale ssh --accept-new bilal@bilal-<machine-id>
 
 **Fix:** Fixed in PR #14 — switched to the default in-memory jobstore. If you still see this, pull latest. Jobs are rebuilt from current config on every startup, so persistence was never needed.
 
+### Only Maghrib and Isha play; Fajr / Dhuhr / Asr are silently skipped (no log entries)
+
+**Cause:** APScheduler defaulted to the host OS timezone (`tzlocal`). Fresh Raspberry Pi OS / DietPi images set the system timezone to **UTC**, so the daily 00:01 reschedule cron fired at the UTC-equivalent of local evening (e.g. 19:01 CDT in Austin, 17:01 PDT in the Bay Area). By that time the morning and afternoon prayers were already past `now`, so the `pt <= now` guard in `schedule_today()` dropped them. Only Maghrib and Isha survived to be scheduled. Both gift units hit this; the symptom was identical across deployments.
+
+**Fix:** `BackgroundScheduler` is now constructed with `timezone=<config tz>` and the recurring `CronTrigger`s carry an explicit `timezone=` kwarg. The host's `/etc/timezone` no longer matters for scheduling; only the timezone field in `config.json` does. Existing units pick up the fix automatically via Watchtower; just wait for the next image refresh or `docker compose pull && docker compose up -d`.
+
+**How to confirm a unit is healthy:** `docker logs bilal-scheduler 2>&1 | grep "Adhan scheduler started"` should show `(timezone=America/Chicago)` (or whatever the recipient's tz is), and the next `Scheduled <prayer> at HH:MM:SS` block should list all five prayers that are still in the future today.
+
 ### `bilal-watchtower` crash loop: `client version 1.25 is too old. Minimum supported API version is 1.40`
 
 **Cause:** `containrrr/watchtower` is abandoned and ships an old moby client that speaks Docker API v1.25. Docker Engine 25+ refuses anything below v1.40.
