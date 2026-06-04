@@ -1,6 +1,7 @@
 """mDNS device discovery + direct-connect for Google Nest/Home speakers."""
 
 import logging
+import socket
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -67,10 +68,29 @@ def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str,
     return devices
 
 
-def connect_by_host(host: str, port: int = 8009, timeout: float = 10) -> pychromecast.Chromecast | None:
+def _safe_disconnect(device: pychromecast.Chromecast) -> None:
+    """Close a Chromecast connection without blocking or raising."""
+    try:
+        device.disconnect(timeout=0)
+    except Exception:
+        pass
+
+
+def connect_by_host(
+    host: str,
+    port: int = 8009,
+    timeout: float = 10,
+    expected_name: str | None = None,
+) -> pychromecast.Chromecast | None:
     """Connect directly to a Chromecast by IP address, skipping mDNS.
 
-    Returns a Chromecast object on success, None on failure.
+    When ``expected_name`` is given, the device answering at ``host`` must
+    report that friendly name or the connection is rejected.  This guards
+    against a stale saved IP that DHCP has since handed to a *different* cast
+    device — without the check we would happily blast the adhan on whatever
+    speaker now lives at the old address.
+
+    Returns a Chromecast object on success, None on failure or name mismatch.
     """
     try:
         casts, browser = pychromecast.get_listed_chromecasts(
@@ -80,10 +100,18 @@ def connect_by_host(host: str, port: int = 8009, timeout: float = 10) -> pychrom
         )
         if browser:
             browser.stop_discovery()
-        if casts:
-            cc = casts[0]
-            cc.wait(timeout=timeout)
-            return cc
+        if not casts:
+            return None
+        cc = casts[0]
+        cc.wait(timeout=timeout)
+        if expected_name is not None and cc.cast_info.friendly_name != expected_name:
+            logger.info(
+                "Saved host %s:%d now serves '%s' (wanted '%s') — treating as moved",
+                host, port, cc.cast_info.friendly_name, expected_name,
+            )
+            _safe_disconnect(cc)
+            return None
+        return cc
     except Exception as exc:
         logger.debug("Direct connect to %s:%d failed: %s", host, port, exc)
     return None
@@ -117,7 +145,7 @@ def connect_speakers_direct(
     max_workers = min(len(targets), 8)
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="direct-cc") as pool:
         futures = {
-            pool.submit(connect_by_host, host, port, timeout): (name, host, port)
+            pool.submit(connect_by_host, host, port, timeout, name): (name, host, port)
             for name, host, port in targets
         }
         for fut in as_completed(futures):
@@ -133,6 +161,122 @@ def connect_speakers_direct(
             else:
                 logger.info("Direct connect failed: %s (%s:%d), will fall back to mDNS", name, host, port)
     return devices
+
+
+def find_speakers_by_name(
+    names: list[str],
+    timeout: float = 15,
+    tries: int = 2,
+    retry_wait: float = 2.0,
+) -> dict[str, pychromecast.Chromecast]:
+    """Locate specific speakers by friendly name via mDNS.
+
+    Unlike ``discover_chromecasts`` (which grabs whatever turns up in a fixed
+    window), this actively hunts for the named devices and keeps retrying until
+    it finds them or ``timeout`` elapses.  This is the primary self-heal path
+    when a speaker's IP changes: the friendly name is stable, the address is
+    not.  Works for groups as well as individual speakers.
+
+    Returns friendly_name -> Chromecast for the names that were found.
+    """
+    names = [n for n in names if n]
+    if not names:
+        return {}
+    logger.info("mDNS lookup by name for: %s", names)
+    try:
+        casts, browser = pychromecast.get_listed_chromecasts(
+            friendly_names=list(names),
+            tries=tries,
+            retry_wait=retry_wait,
+            timeout=timeout,
+        )
+        if browser:
+            browser.stop_discovery()
+    except Exception as exc:
+        logger.info("mDNS name lookup failed: %s", exc)
+        return {}
+
+    wanted = set(names)
+    found: dict[str, pychromecast.Chromecast] = {}
+    for cc in casts:
+        name = cc.cast_info.friendly_name
+        if name not in wanted or name in found:
+            continue
+        try:
+            cc.wait(timeout=timeout)
+        except Exception:
+            logger.debug("Found '%s' via mDNS but it never became ready", name)
+            _safe_disconnect(cc)
+            continue
+        found[name] = cc
+        logger.info("Located '%s' via mDNS at %s:%d", name, cc.cast_info.host, cc.cast_info.port)
+    return found
+
+
+def _tcp_port_open(host: str, port: int, timeout: float) -> bool:
+    """Return True if a TCP connection to host:port completes within timeout."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def scan_network_for_speakers(
+    names: list[str],
+    candidate_hosts: list[str],
+    port: int = 8009,
+    probe_timeout: float = 0.6,
+    connect_timeout: float = 6,
+    max_workers: int = 64,
+) -> dict[str, pychromecast.Chromecast]:
+    """Find speakers by name via a unicast sweep — no multicast/mDNS required.
+
+    Last-resort self-heal for networks where mDNS is unreliable (WiFi multicast
+    filtering, IGMP snooping, mesh routers).  Phase 1 fast-probes every
+    candidate host for an open cast port; phase 2 connects to the handful that
+    answer and matches them by friendly name.
+
+    Only finds individual speakers, which use the stable :8009 port.  Cast
+    *groups* use an ephemeral port and can only be recovered via mDNS, so they
+    are intentionally out of scope here.
+
+    Returns friendly_name -> Chromecast for the names that were found.
+    """
+    wanted = {n for n in names if n}
+    if not wanted or not candidate_hosts:
+        return {}
+    logger.warning(
+        "Unicast-scanning %d host(s) on :%d to recover %s (mDNS-independent fallback)",
+        len(candidate_hosts), port, sorted(wanted),
+    )
+
+    open_hosts: list[str] = []
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="scan") as pool:
+        futures = {pool.submit(_tcp_port_open, h, port, probe_timeout): h for h in candidate_hosts}
+        for fut in as_completed(futures):
+            try:
+                if fut.result():
+                    open_hosts.append(futures[fut])
+            except Exception:
+                pass
+    logger.info("Scan: %d host(s) have :%d open", len(open_hosts), port)
+
+    found: dict[str, pychromecast.Chromecast] = {}
+    for host in open_hosts:
+        if not wanted:
+            break
+        cc = connect_by_host(host, port, timeout=connect_timeout)
+        if cc is None:
+            continue
+        name = cc.cast_info.friendly_name
+        if name in wanted:
+            found[name] = cc
+            wanted.discard(name)
+            logger.info("Recovered '%s' at %s:%d via unicast scan", name, host, port)
+        else:
+            _safe_disconnect(cc)
+    return found
 
 
 def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict[str, dict]:
