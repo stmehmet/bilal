@@ -582,6 +582,11 @@ def api_discover_speakers():
                 "model": info["model"],
                 "host": info.get("host"),
                 "port": info.get("port", 8009),
+                "uuid": info.get("uuid"),
+                # How to re-find this speaker on later runs: "device" pins to
+                # this exact unit by UUID (survives IP changes and renames);
+                # "name" follows whatever device advertises this name.
+                "match_by": "device",
             }
         else:
             # Update metadata + network info on re-scan
@@ -590,6 +595,9 @@ def api_discover_speakers():
             if info.get("host"):
                 speakers[name]["host"] = info["host"]
                 speakers[name]["port"] = info.get("port", 8009)
+            if info.get("uuid"):
+                speakers[name]["uuid"] = info["uuid"]
+            speakers[name].setdefault("match_by", "device")
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"speakers": list(speakers.keys())})
@@ -648,6 +656,8 @@ def api_update_speakers():
                     speakers[name]["volume"] = max(0.0, min(1.0, vol))
                 except (TypeError, ValueError):
                     pass
+        if "match_by" in info and info["match_by"] in ("device", "name"):
+            speakers[name]["match_by"] = info["match_by"]
     config["speakers"] = speakers
     save_config(config)
     return jsonify({"status": "ok"})

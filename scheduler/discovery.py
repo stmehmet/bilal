@@ -76,21 +76,33 @@ def _safe_disconnect(device: pychromecast.Chromecast) -> None:
         pass
 
 
+def _cast_uuid(cast_info) -> str | None:
+    """Return a device's UUID as a string, or None if it has none.
+
+    The UUID is the only stable identifier: it survives DHCP IP changes *and*
+    Google Home renames, and it stays constant for cast groups even though
+    their port is ephemeral.  Friendly name is the fallback when no UUID is on
+    record yet.
+    """
+    uuid = getattr(cast_info, "uuid", None)
+    return str(uuid) if uuid else None
+
+
 def connect_by_host(
     host: str,
     port: int = 8009,
     timeout: float = 10,
     expected_name: str | None = None,
+    expected_uuid: str | None = None,
 ) -> pychromecast.Chromecast | None:
     """Connect directly to a Chromecast by IP address, skipping mDNS.
 
-    When ``expected_name`` is given, the device answering at ``host`` must
-    report that friendly name or the connection is rejected.  This guards
-    against a stale saved IP that DHCP has since handed to a *different* cast
-    device — without the check we would happily blast the adhan on whatever
-    speaker now lives at the old address.
+    Identity is verified before the device is accepted, so a stale saved IP that
+    DHCP has since handed to a *different* cast device never receives the adhan.
+    When ``expected_uuid`` is given it wins (UUIDs are stable across IP changes
+    and renames); otherwise ``expected_name`` is checked.
 
-    Returns a Chromecast object on success, None on failure or name mismatch.
+    Returns a Chromecast object on success, None on failure or identity mismatch.
     """
     try:
         casts, browser = pychromecast.get_listed_chromecasts(
@@ -104,7 +116,16 @@ def connect_by_host(
             return None
         cc = casts[0]
         cc.wait(timeout=timeout)
-        if expected_name is not None and cc.cast_info.friendly_name != expected_name:
+        if expected_uuid:
+            got = _cast_uuid(cc.cast_info)
+            if got != str(expected_uuid):
+                logger.info(
+                    "Saved host %s:%d serves uuid %s (wanted %s) — treating as moved",
+                    host, port, got, expected_uuid,
+                )
+                _safe_disconnect(cc)
+                return None
+        elif expected_name is not None and cc.cast_info.friendly_name != expected_name:
             logger.info(
                 "Saved host %s:%d now serves '%s' (wanted '%s') — treating as moved",
                 host, port, cc.cast_info.friendly_name, expected_name,
@@ -129,14 +150,17 @@ def connect_speakers_direct(
     connect concurrently so the worst-case is a single timeout regardless of
     fleet size.
     """
-    targets: list[tuple[str, str, int]] = []
+    targets: list[tuple[str, str, int, str | None]] = []
     for name in enabled_names:
         info = speakers_config.get(name, {})
         host = info.get("host")
         if not host:
             continue
         port = info.get("port", 8009)
-        targets.append((name, host, port))
+        # Verify by UUID when this slot is pinned to a specific device; by name
+        # when it should follow whatever device currently advertises that name.
+        expected_uuid = info.get("uuid") if info.get("match_by", "device") == "device" else None
+        targets.append((name, host, port, expected_uuid))
 
     if not targets:
         return {}
@@ -145,8 +169,8 @@ def connect_speakers_direct(
     max_workers = min(len(targets), 8)
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="direct-cc") as pool:
         futures = {
-            pool.submit(connect_by_host, host, port, timeout, name): (name, host, port)
-            for name, host, port in targets
+            pool.submit(connect_by_host, host, port, timeout, name, expected_uuid): (name, host, port)
+            for name, host, port, expected_uuid in targets
         }
         for fut in as_completed(futures):
             name, host, port = futures[fut]
@@ -159,7 +183,7 @@ def connect_speakers_direct(
                 devices[name] = cc
                 logger.info("Direct connect OK: %s (%s:%d)", name, host, port)
             else:
-                logger.info("Direct connect failed: %s (%s:%d), will fall back to mDNS", name, host, port)
+                logger.info("Direct connect failed: %s (%s:%d), will fall back to browse", name, host, port)
     return devices
 
 
@@ -168,48 +192,82 @@ def find_speakers_by_name(
     timeout: float = 15,
     tries: int = 2,
     retry_wait: float = 2.0,
+    identities: dict | None = None,
 ) -> dict[str, pychromecast.Chromecast]:
-    """Locate specific speakers by friendly name via mDNS.
+    """Locate speakers via a full mDNS browse, matching by UUID or friendly name.
 
-    Unlike ``discover_chromecasts`` (which grabs whatever turns up in a fixed
-    window), this actively hunts for the named devices and keeps retrying until
-    it finds them or ``timeout`` elapses.  This is the primary self-heal path
-    when a speaker's IP changes: the friendly name is stable, the address is
-    not.  Works for groups as well as individual speakers.
+    A broad ``get_chromecasts()`` browse is dramatically more reliable than the
+    targeted ``get_listed_chromecasts(friendly_names=...)`` / ``known_hosts=...``
+    discovery, which on real networks intermittently returns nothing for devices
+    a full browse finds and connects to in well under a second — and which can't
+    recover cast *groups* (their port is ephemeral; only the browse re-finds
+    them).  This is the primary self-heal path when a speaker's address changes.
+
+    ``identities`` optionally maps a wanted name to
+    ``{"uuid": str|None, "match_by": "device"|"name"}`` so a speaker can be
+    re-found by its stable UUID (survives IP changes *and* Google Home renames)
+    instead of its current friendly name.  Without it, matching is by name.
+
+    Every browsed device we don't keep is disconnected so its background
+    socket-client thread doesn't leak — unbounded accumulation of those threads
+    is what eventually wedged a long-running scheduler with "can't start new
+    thread".  ``tries``/``retry_wait`` are accepted for call compatibility.
 
     Returns friendly_name -> Chromecast for the names that were found.
     """
     names = [n for n in names if n]
     if not names:
         return {}
-    logger.info("mDNS lookup by name for: %s", names)
+    identities = identities or {}
+
+    # Split the wanted speakers into UUID matchers (preferred) and name matchers.
+    want_by_uuid: dict[str, str] = {}
+    want_by_name: dict[str, str] = {}
+    for n in names:
+        ident = identities.get(n, {})
+        uuid = ident.get("uuid")
+        if ident.get("match_by", "device") == "device" and uuid:
+            want_by_uuid[str(uuid)] = n
+        else:
+            want_by_name[n] = n
+
+    logger.info("mDNS browse to locate %d speaker(s): %s", len(names), names)
     try:
-        casts, browser = pychromecast.get_listed_chromecasts(
-            friendly_names=list(names),
-            tries=tries,
-            retry_wait=retry_wait,
-            timeout=timeout,
-        )
-        if browser:
-            browser.stop_discovery()
+        chromecasts, browser = pychromecast.get_chromecasts(timeout=timeout)
     except Exception as exc:
-        logger.info("mDNS name lookup failed: %s", exc)
+        logger.info("mDNS browse failed: %s", exc)
         return {}
 
-    wanted = set(names)
     found: dict[str, pychromecast.Chromecast] = {}
-    for cc in casts:
-        name = cc.cast_info.friendly_name
-        if name not in wanted or name in found:
-            continue
-        try:
-            cc.wait(timeout=timeout)
-        except Exception:
-            logger.debug("Found '%s' via mDNS but it never became ready", name)
-            _safe_disconnect(cc)
-            continue
-        found[name] = cc
-        logger.info("Located '%s' via mDNS at %s:%d", name, cc.cast_info.host, cc.cast_info.port)
+    try:
+        for cc in chromecasts:
+            info = cc.cast_info
+            target = None
+            cc_uuid = _cast_uuid(info)
+            if cc_uuid and cc_uuid in want_by_uuid and want_by_uuid[cc_uuid] not in found:
+                target = want_by_uuid[cc_uuid]
+            elif info.friendly_name in want_by_name and want_by_name[info.friendly_name] not in found:
+                target = want_by_name[info.friendly_name]
+            if target is None:
+                _safe_disconnect(cc)  # not wanted — release its socket thread
+                continue
+            try:
+                cc.wait(timeout=timeout)
+            except Exception:
+                logger.debug("Found '%s' via browse but it never became ready", target)
+                _safe_disconnect(cc)
+                continue
+            found[target] = cc
+            logger.info(
+                "Located '%s' via browse at %s:%s",
+                target, getattr(info, "host", None), getattr(info, "port", None),
+            )
+    finally:
+        if browser:
+            try:
+                browser.stop_discovery()
+            except Exception:
+                pass
     return found
 
 
@@ -305,6 +363,7 @@ def get_device_metadata(chromecasts: dict[str, pychromecast.Chromecast]) -> dict
             "is_group": cast_type == "group",
             "host": host,
             "port": port,
+            "uuid": _cast_uuid(cc.cast_info),
         }
     return meta
 

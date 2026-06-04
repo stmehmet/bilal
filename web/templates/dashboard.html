@@ -499,6 +499,23 @@
               <i class="ph ph-arrow-counter-clockwise"></i>
             </button>
           </div>
+          {# Per-speaker re-find identity — how the scheduler relocates this
+             speaker when its IP changes on a later run. #}
+          {% set match_by = info.get('match_by', 'device') %}
+          <div class="mt-2 flex items-center gap-2 text-xs flex-wrap">
+            <i class="ph ph-crosshair text-slate-500 flex-shrink-0"
+               title="How the scheduler re-finds this speaker if its IP changes"></i>
+            <span class="text-slate-500">Re-find by:</span>
+            <select class="speaker-match-by bg-slate-800 text-slate-200 rounded px-2 py-0.5 border border-slate-600"
+                    data-speaker="{{ name }}">
+              <option value="device" {% if match_by != 'name' %}selected{% endif %}>This exact device</option>
+              <option value="name" {% if match_by == 'name' %}selected{% endif %}>Any device named “{{ name }}”</option>
+            </select>
+            {% if match_by != 'name' and not info.get('uuid') %}
+            <span class="text-amber-500/80"
+                  title="No device ID stored yet — run Discover so this speaker can be matched by its exact device. Falls back to name matching until then.">⚠ no ID yet</span>
+            {% endif %}
+          </div>
           {# Per-speaker prayer schedule — Adhan + Iqamah in a tabbed view #}
           <details class="mt-2">
             <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
@@ -883,6 +900,21 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(speakers),
         });
+      });
+    });
+
+    // ── Per-speaker re-find identity (UUID vs name) ──────────────────────────
+    document.querySelectorAll('.speaker-match-by').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        const speaker = sel.dataset.speaker;
+        await fetch('/api/speakers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [speaker]: { match_by: sel.value } }),
+        });
+        toast(sel.value === 'name'
+          ? `"${speaker}" will be re-found by name`
+          : `"${speaker}" pinned to this exact device`);
       });
     });
 
