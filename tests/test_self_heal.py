@@ -18,17 +18,18 @@ import adhan_scheduler as sched
 # Fakes
 # ---------------------------------------------------------------------------
 class FakeCastInfo:
-    def __init__(self, friendly_name, host, port=8009, cast_type="cast"):
+    def __init__(self, friendly_name, host, port=8009, cast_type="cast", uuid=None):
         self.friendly_name = friendly_name
         self.host = host
         self.port = port
         self.cast_type = cast_type
         self.model_name = "FakeNest"
+        self.uuid = uuid
 
 
 class FakeCast:
-    def __init__(self, friendly_name, host, port=8009, cast_type="cast"):
-        self.cast_info = FakeCastInfo(friendly_name, host, port, cast_type)
+    def __init__(self, friendly_name, host, port=8009, cast_type="cast", uuid=None):
+        self.cast_info = FakeCastInfo(friendly_name, host, port, cast_type, uuid)
         self.waited = False
         self.disconnected = False
 
@@ -62,12 +63,34 @@ def fake_get_listed(by_host=None, by_name=None):
     return _fake
 
 
+def fake_get_chromecasts(casts):
+    """Build a stand-in for pychromecast.get_chromecasts (the full browse).
+
+    Returns every cast on the "network" plus a browser, exactly like the real
+    call — the resolver is responsible for filtering to the wanted devices and
+    disconnecting the rest.
+    """
+    def _fake(timeout=None):
+        return list(casts), MagicMock()
+    return _fake
+
+
 @pytest.fixture
 def patch_listed(monkeypatch):
     def _apply(by_host=None, by_name=None):
         monkeypatch.setattr(
             discovery.pychromecast, "get_listed_chromecasts",
             fake_get_listed(by_host, by_name), raising=False,
+        )
+    return _apply
+
+
+@pytest.fixture
+def patch_browse(monkeypatch):
+    def _apply(casts):
+        monkeypatch.setattr(
+            discovery.pychromecast, "get_chromecasts",
+            fake_get_chromecasts(casts), raising=False,
         )
     return _apply
 
@@ -100,6 +123,23 @@ class TestConnectByHostIdentity:
         patch_listed(by_host={"10.0.0.5": kitchen})
         assert discovery.connect_by_host("10.0.0.5") is kitchen
 
+    def test_matching_uuid_returns_device(self, patch_listed):
+        office = FakeCast("Office", "10.0.0.5", uuid="uuid-office")
+        patch_listed(by_host={"10.0.0.5": office})
+        cc = discovery.connect_by_host("10.0.0.5", expected_uuid="uuid-office")
+        assert cc is office
+
+    def test_uuid_wins_over_name_match(self, patch_listed):
+        # Same friendly name, but a *different* physical device (UUID changed) —
+        # e.g. the user swapped the unit. Pinned-by-device must reject it.
+        imposter = FakeCast("Office", "10.0.0.5", uuid="uuid-new")
+        patch_listed(by_host={"10.0.0.5": imposter})
+        cc = discovery.connect_by_host(
+            "10.0.0.5", expected_name="Office", expected_uuid="uuid-original",
+        )
+        assert cc is None
+        assert imposter.disconnected
+
 
 # ---------------------------------------------------------------------------
 # connect_speakers_direct — verification flows through to the fleet path
@@ -120,26 +160,59 @@ class TestConnectSpeakersDirect:
 
 
 # ---------------------------------------------------------------------------
-# find_speakers_by_name — targeted mDNS
+# find_speakers_by_name — full browse, matched by UUID or name
 # ---------------------------------------------------------------------------
 class TestFindSpeakersByName:
-    def test_finds_only_requested_names(self, patch_listed):
-        patch_listed(by_name={
-            "Office": FakeCast("Office", "10.0.0.9"),
-            "Kitchen": FakeCast("Kitchen", "10.0.0.10"),
-        })
+    def test_finds_only_requested_names(self, patch_browse):
+        office = FakeCast("Office", "10.0.0.9")
+        kitchen = FakeCast("Kitchen", "10.0.0.10")
+        patch_browse([office, kitchen])
         found = discovery.find_speakers_by_name(["Office"])
         assert set(found) == {"Office"}
         assert found["Office"].cast_info.host == "10.0.0.9"
+        # The browse returns every device; the ones we don't want must be
+        # disconnected so their socket-client threads don't leak.
+        assert kitchen.disconnected
+        assert not office.disconnected
 
-    def test_missing_name_absent_from_result(self, patch_listed):
-        patch_listed(by_name={"Office": FakeCast("Office", "10.0.0.9")})
+    def test_missing_name_absent_from_result(self, patch_browse):
+        patch_browse([FakeCast("Office", "10.0.0.9")])
         found = discovery.find_speakers_by_name(["Office", "Garage"])
         assert set(found) == {"Office"}
 
-    def test_empty_names_short_circuits(self, patch_listed):
-        patch_listed(by_name={})
+    def test_empty_names_short_circuits(self, monkeypatch):
+        called = {"v": False}
+
+        def _boom(timeout=None):
+            called["v"] = True
+            return [], MagicMock()
+
+        monkeypatch.setattr(discovery.pychromecast, "get_chromecasts", _boom, raising=False)
         assert discovery.find_speakers_by_name([]) == {}
+        assert called["v"] is False  # never browses for an empty request
+
+    def test_matches_by_uuid_across_rename(self, patch_browse):
+        # Device now advertises a *new* friendly name but the same UUID.
+        moved = FakeCast("Office (renamed)", "10.0.0.9", uuid="uuid-office")
+        patch_browse([moved])
+        found = discovery.find_speakers_by_name(
+            ["Office"],
+            identities={"Office": {"uuid": "uuid-office", "match_by": "device"}},
+        )
+        assert set(found) == {"Office"}
+        assert found["Office"] is moved
+
+    def test_name_mode_ignores_uuid(self, patch_browse):
+        # match_by="name" follows the friendly name even if the UUID differs,
+        # so a replacement unit adopting the same name takes over the slot.
+        replacement = FakeCast("Office", "10.0.0.9", uuid="some-other-uuid")
+        patch_browse([replacement])
+        found = discovery.find_speakers_by_name(
+            ["Office"],
+            identities={"Office": {"uuid": "stale-uuid", "match_by": "name"}},
+        )
+        assert set(found) == {"Office"}
+        assert found["Office"] is replacement
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +327,21 @@ class TestCarryForward:
         assert sched._persist_discovered_hosts(devices, speakers) is False
         assert speakers["Office"]["volume"] == 0.7
 
+    def test_backfills_missing_uuid_for_legacy_speaker(self):
+        # A speaker added before UUID capture upgrades to stable identity the
+        # first time we resolve it, even when its IP hasn't moved.
+        speakers = {"Office": {"host": "192.168.1.50", "port": 8009, "enabled": True}}
+        devices = {"Office": FakeCast("Office", "192.168.1.50", uuid="uuid-office")}
+        assert sched._persist_discovered_hosts(devices, speakers) is True
+        assert speakers["Office"]["uuid"] == "uuid-office"
+        assert speakers["Office"]["enabled"] is True  # carried forward
+
+    def test_does_not_overwrite_pinned_uuid(self):
+        speakers = {"Office": {"host": "192.168.1.50", "port": 8009, "uuid": "pinned"}}
+        devices = {"Office": FakeCast("Office", "192.168.1.50", uuid="different")}
+        assert sched._persist_discovered_hosts(devices, speakers) is False
+        assert speakers["Office"]["uuid"] == "pinned"
+
 
 # ---------------------------------------------------------------------------
 # _locate_speakers — full escalation + persistence
@@ -286,9 +374,9 @@ class TestLocateSpeakersEscalation:
         # Direct connect fails (stale IP), mDNS finds it at a new address.
         monkeypatch.setattr(sched, "connect_speakers_direct", lambda cfg, names, timeout=10: {})
         monkeypatch.setattr(sched, "find_speakers_by_name",
-                            lambda names, timeout=15: {"Office": FakeCast("Office", "10.0.0.99")})
+                            lambda names, timeout=15, identities=None: {"Office": FakeCast("Office", "10.0.0.99")})
         monkeypatch.setattr(sched, "scan_network_for_speakers",
-                            lambda *a, **k: pytest.fail("scan should not run when mDNS succeeds"))
+                            lambda *a, **k: pytest.fail("scan should not run when browse succeeds"))
         out = sched._locate_speakers(store["speakers"], ["Office"])
         assert set(out) == {"Office"}
         assert store["saved"] is True
@@ -299,7 +387,7 @@ class TestLocateSpeakersEscalation:
         store = {"speakers": {"Office": {"host": "192.168.1.5", "port": 8009}}, "saved": False}
         self._stub_config(monkeypatch, store)
         monkeypatch.setattr(sched, "connect_speakers_direct", lambda cfg, names, timeout=10: {})
-        monkeypatch.setattr(sched, "find_speakers_by_name", lambda names, timeout=15: {})
+        monkeypatch.setattr(sched, "find_speakers_by_name", lambda names, timeout=15, identities=None: {})
         scan_calls = {}
 
         def _scan(names, hosts, **k):

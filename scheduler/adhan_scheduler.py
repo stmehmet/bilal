@@ -276,27 +276,38 @@ def _store_prewarm(prayer_name: str | None, devices: dict) -> None:
 
 
 def _persist_discovered_hosts(devices: dict, speakers_config: dict) -> bool:
-    """Update saved host/port for speakers we reached via mDNS.
+    """Update saved host/port (and backfill UUID) for speakers we reached.
 
     Returns True if anything was persisted.  Keeping the stored host fresh
-    means tomorrow's direct-connect works even if the router handed out a
-    new lease overnight.
+    means tomorrow's direct-connect works even if the router handed out a new
+    lease overnight.  A speaker that predates UUID capture also gets its UUID
+    backfilled the first time we resolve it, so it upgrades to stable
+    identity matching on the next run.
     """
     meta = get_device_metadata(devices)
     changed = False
     for name, info in meta.items():
-        host = info.get("host")
-        if not host:
-            continue
-        port = info.get("port", 8009)
         saved = speakers_config.get(name, {})
-        if saved.get("host") == host and saved.get("port", 8009) == port:
-            continue
-        saved["host"] = host
-        saved["port"] = port
-        speakers_config[name] = saved
-        changed = True
-        logger.info("Refreshed host for %s -> %s:%d", name, host, port)
+        entry_changed = False
+
+        host = info.get("host")
+        if host:
+            port = info.get("port", 8009)
+            if saved.get("host") != host or saved.get("port", 8009) != port:
+                saved["host"] = host
+                saved["port"] = port
+                entry_changed = True
+                logger.info("Refreshed host for %s -> %s:%d", name, host, port)
+
+        new_uuid = info.get("uuid")
+        if new_uuid and not saved.get("uuid"):
+            saved["uuid"] = new_uuid
+            entry_changed = True
+            logger.info("Captured UUID for %s -> %s", name, new_uuid)
+
+        if entry_changed:
+            speakers_config[name] = saved
+            changed = True
     return changed
 
 
@@ -351,14 +362,16 @@ def _refresh_saved_hosts(devices: dict) -> None:
 
 
 def _locate_speakers(speakers_config: dict, names: list[str]) -> dict:
-    """Resolve speakers by name through escalating fallbacks, then persist IPs.
+    """Resolve speakers through escalating fallbacks, then persist IP/UUID.
 
-    1. Direct-connect to the saved host (identity-verified).
-    2. mDNS lookup by friendly name — handles IP changes; covers groups.
+    1. Direct-connect to the saved host (identity-verified by UUID or name).
+    2. Full mDNS browse, matched by UUID (preferred) or name — handles IP
+       changes and renames, and covers groups.
     3. Unicast subnet scan by name — works even when mDNS is unreliable.
 
-    Any device found at a new address has its host/port written back to config
-    so the fast path works next time.  Returns friendly_name -> Chromecast.
+    Any device found at a new address has its host/port (and UUID, if not yet
+    recorded) written back to config so the fast path works next time.
+    Returns friendly_name -> Chromecast.
     """
     names = list(names)
     if not names:
@@ -368,8 +381,15 @@ def _locate_speakers(speakers_config: dict, names: list[str]) -> dict:
 
     still = [n for n in names if n not in devices]
     if still:
-        logger.info("  mDNS-by-name fallback for: %s", still)
-        devices.update(find_speakers_by_name(still, timeout=15))
+        identities = {
+            n: {
+                "uuid": speakers_config.get(n, {}).get("uuid"),
+                "match_by": speakers_config.get(n, {}).get("match_by", "device"),
+            }
+            for n in still
+        }
+        logger.info("  browse fallback for: %s", still)
+        devices.update(find_speakers_by_name(still, timeout=15, identities=identities))
 
     still = [n for n in names if n not in devices]
     if still:
