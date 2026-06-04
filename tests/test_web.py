@@ -156,6 +156,55 @@ class TestSpeakers:
         )
         assert resp.status_code == 404
 
+    def test_update_speaker_match_by(self, logged_in_client):
+        import config as cfg
+        cfg.save_config({
+            **cfg.DEFAULT_CONFIG,
+            "setup_complete": True,
+            "speakers": {"Living Room": {"enabled": True, "match_by": "device"}},
+        })
+        resp = logged_in_client.post(
+            "/api/speakers",
+            json={"Living Room": {"match_by": "name"}},
+        )
+        assert resp.status_code == 200
+        data = logged_in_client.get("/api/config").get_json()
+        assert data["speakers"]["Living Room"]["match_by"] == "name"
+
+    def test_update_speaker_match_by_rejects_garbage(self, logged_in_client):
+        import config as cfg
+        cfg.save_config({
+            **cfg.DEFAULT_CONFIG,
+            "setup_complete": True,
+            "speakers": {"Living Room": {"enabled": True, "match_by": "device"}},
+        })
+        logged_in_client.post(
+            "/api/speakers",
+            json={"Living Room": {"match_by": "nonsense"}},
+        )
+        data = logged_in_client.get("/api/config").get_json()
+        assert data["speakers"]["Living Room"]["match_by"] == "device"  # unchanged
+
+    def test_dashboard_renders_match_by_toggle(self, logged_in_client):
+        import config as cfg
+        cfg.save_config({
+            **cfg.DEFAULT_CONFIG,
+            "latitude": 21.4225, "longitude": 39.8262, "timezone": "Asia/Riyadh",
+            "setup_complete": True,
+            "speakers": {
+                "Pinned": {"enabled": True, "uuid": "u-1", "match_by": "device", "host": "10.0.0.5"},
+                "ByName": {"enabled": True, "match_by": "name", "host": "10.0.0.6"},
+                "Legacy": {"enabled": True, "host": "10.0.0.7"},  # no uuid → default device
+            },
+        })
+        resp = logged_in_client.get("/")
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert "speaker-match-by" in html
+        assert "This exact device" in html
+        assert "Any device named" in html
+        assert "no ID yet" in html  # Legacy (device mode, no uuid) shows the warning
+
 
 # ---------------------------------------------------------------------------
 # WiFi
