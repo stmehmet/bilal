@@ -126,7 +126,50 @@ log "Starting bilal..."
 $DOCKER compose up -d
 
 # ---------------------------------------------------------------------------
-# 7. Summary
+# 7. Self-update backstop — a weekly systemd timer that re-pulls and restarts
+#    the stack even if Watchtower dies. Watchtower only updates images and
+#    cannot deliver a compose-file change, so a broken updater would otherwise
+#    freeze the unit silently. This timer is the independent recovery path.
+# ---------------------------------------------------------------------------
+if command -v systemctl &>/dev/null; then
+    log "Installing weekly self-update timer..."
+    chmod +x "${INSTALL_DIR}/scripts/self-update.sh" 2>/dev/null || true
+
+    sudo tee /etc/systemd/system/bilal-update.service >/dev/null <<EOF
+[Unit]
+Description=Bilal self-update (Watchtower-independent backstop)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=${USER}
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/scripts/self-update.sh
+EOF
+
+    sudo tee /etc/systemd/system/bilal-update.timer >/dev/null <<EOF
+[Unit]
+Description=Run Bilal self-update weekly
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now bilal-update.timer
+    log "Self-update timer enabled (weekly)."
+else
+    warn "systemctl not found — skipping self-update timer (no auto-recovery if Watchtower dies)."
+fi
+
+# ---------------------------------------------------------------------------
+# 8. Summary
 # ---------------------------------------------------------------------------
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "$LAN_IP" ]; then
