@@ -898,6 +898,8 @@ def api_status():
         "audio_files_missing": audio_missing,
         "dnd_enabled": config.get("dnd_enabled", False),
         "iqamah_enabled": config.get("iqamah_enabled", False),
+        # Staleness signal: when did this unit last successfully play an adhan?
+        "last_playback_success": playback_log.last_success(),
         "server_time": datetime.datetime.now(
             pytz.timezone(config.get("timezone", "UTC"))
         ).isoformat(),

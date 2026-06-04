@@ -172,6 +172,19 @@ def query(
     return entries
 
 
+def last_success(within_days: int = RETENTION_DAYS) -> str | None:
+    """Return the ISO timestamp of the most recent successful playback, or None.
+
+    A staleness signal for fleet health: a unit that hasn't logged a success
+    recently is either wedged or not reaching its speakers.  ``query`` returns
+    newest-first, so the first ``ok`` entry is the most recent success.
+    """
+    for entry in query(limit=500, days=within_days):
+        if entry.get("ok"):
+            return entry.get("ts")
+    return None
+
+
 def purge(older_than_days: int = RETENTION_DAYS) -> int:
     """Force a retention pass; returns the number of entries removed."""
     if not LOG_FILE.exists():
