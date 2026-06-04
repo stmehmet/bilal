@@ -17,6 +17,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
+import heartbeat
 import playback_log
 from config import (
     AUDIO_DIR,
@@ -498,6 +499,11 @@ def _play_on_speakers(
         )
         for name, ok in results.items():
             logger.info("  %s -> %s", name, "success" if ok else "FAILED")
+        # Heartbeat: a successful playback proves the unit is alive AND reaching
+        # its speakers. Pinging only on success is what lets the dead-man's
+        # switch catch a wedged process as well as unreachable speakers.
+        if any(results.values()):
+            heartbeat.ping_success()
     except Exception as exc:
         logger.error("%s Chromecast playback error: %s", event_label, exc)
 

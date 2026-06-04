@@ -40,6 +40,8 @@ services:
       - CONFIG_DIR=/data
       - AUDIO_DIR=/audio
       - WEB_PORT=5000
+      # Optional dead-man's-switch ping URL (see .env.example). No-op if unset.
+      - HEALTHCHECK_PING_URL=${HEALTHCHECK_PING_URL:-}
     depends_on:
       web:
         condition: service_healthy

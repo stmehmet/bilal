@@ -635,3 +635,24 @@ class TestFridaySela:
         from app import audio_display_label
         assert audio_display_label("adhan_fajr_saba_1.mp3") == "Sabâ 1"
 
+
+class TestStatus:
+    def test_status_reports_no_success_when_log_empty(self, logged_in_client, tmp_path, monkeypatch):
+        import config as cfg
+        import playback_log
+        monkeypatch.setattr(playback_log, "LOG_FILE", tmp_path / "pb.jsonl")
+        cfg.save_config({**cfg.DEFAULT_CONFIG, "setup_complete": True})
+        data = logged_in_client.get("/api/status").get_json()
+        assert "last_playback_success" in data
+        assert data["last_playback_success"] is None
+
+    def test_status_reports_last_playback_success(self, logged_in_client, tmp_path, monkeypatch):
+        import config as cfg
+        import playback_log
+        monkeypatch.setattr(playback_log, "LOG_FILE", tmp_path / "pb.jsonl")
+        cfg.save_config({**cfg.DEFAULT_CONFIG, "setup_complete": True})
+        playback_log.record(event="adhan", prayer="Fajr", speaker="S", ok=False, elapsed_seconds=33.0)
+        playback_log.record(event="adhan", prayer="Dhuhr", speaker="S", ok=True, elapsed_seconds=2.0)
+        data = logged_in_client.get("/api/status").get_json()
+        assert data["last_playback_success"] is not None  # the ok=True entry
+

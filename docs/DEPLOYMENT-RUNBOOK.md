@@ -520,3 +520,43 @@ That's the whole value proposition: push a fix to `main`, wait an hour, and ever
 - [ ] **Iqamah audio**: add iqamah audio files so users can pick an iqamah sound
 - [ ] **In-container WiFi management**: wire NetworkManager dbus + nmcli into the web container so the WiFi tab works without SSH
 - [ ] **Street-number geocoding**: merge the `feat/geocode-street-fallback` PR after testing
+
+---
+
+## Appendix C: Fleet resilience — never go dark silently
+
+The gift-fleet model assumes Watchtower stays alive to auto-pull images. It
+doesn't always: on 2026-06-04 a unit's (abandoned `containrrr`) Watchtower had
+died ~2 weeks earlier, freezing the unit on an old image — and Watchtower can't
+deliver its own fix, because that fix is a `docker-compose.yml` change and
+Watchtower only updates *images*. The frozen process then leaked threads until
+playback failed with **zero** log entries. Two safeguards now exist:
+
+### 1. Self-update timer (Watchtower-independent backstop)
+
+`scripts/install.sh` installs a `bilal-update.timer` (weekly, `Persistent=true`)
+that runs `scripts/self-update.sh` → `git pull --ff-only && docker compose pull
+&& docker compose up -d`. This recovers a dead Watchtower *and* delivers
+compose-file changes. Check / run it:
+
+```bash
+systemctl status bilal-update.timer       # enabled + next run
+sudo systemctl start bilal-update.service # force a run now
+journalctl -u bilal-update.service -n 50  # see what it did
+```
+
+Already-deployed units (installed before this existed) get the timer the next
+time you run `./scripts/install.sh` — it's idempotent.
+
+### 2. Heartbeat dead-man's switch
+
+Set `HEALTHCHECK_PING_URL` in `.env` (see `.env.example`). The scheduler pings
+it on **every successful adhan playback** — so the pings stop if the unit wedges
+(dead process) *or* can't reach its speakers. Point it at a free
+[healthchecks.io](https://healthchecks.io) check (one per Pi; period ~12h, grace
+~30h) and you get an email/push when a unit stops playing. A liveness ping would
+*not* catch this — the scheduler's main loop keeps running even while playback is
+broken, which is why the ping is tied to playback success.
+
+`GET /api/status` also returns `last_playback_success` for an at-a-glance
+staleness check without SSH.

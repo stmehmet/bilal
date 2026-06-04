@@ -28,6 +28,10 @@ RUN pip install --no-cache-dir \
 COPY scheduler/ /app/scheduler/
 COPY web/ /app/web/
 
+# Version marker — read by the web app for the dashboard footer, so a deployed
+# unit reports its real version instead of "dev".
+COPY VERSION /app/VERSION
+
 # Create data and audio directories
 RUN mkdir -p /data /audio && chown -R bilal:bilal /data /audio /app
 
