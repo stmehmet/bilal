@@ -34,6 +34,15 @@ for mod_name, setup_fn in _mock_modules.items():
         setup_fn(fake)
         sys.modules[mod_name] = fake
 
+# The two setups above create separate module objects for ``pychromecast`` and
+# ``pychromecast.error``.  Without this re-link, ``pychromecast.error`` (the
+# attribute) and ``sys.modules['pychromecast.error']`` would be different
+# modules — and discovery.py's ``except pychromecast.error.PyChromecastError``
+# would raise AttributeError when evaluated.  Realigning the attribute lets
+# tests exercise the exception paths.
+if "pychromecast" in sys.modules and "pychromecast.error" in sys.modules:
+    sys.modules["pychromecast"].error = sys.modules["pychromecast.error"]
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "scheduler"))
 sys.path.insert(0, str(Path(__file__).parent.parent / "web"))
 
