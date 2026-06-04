@@ -1,6 +1,7 @@
 """Core Adhan scheduler – computes daily prayer times and triggers playback."""
 
 import datetime
+import ipaddress
 import logging
 import os
 import socket
@@ -26,9 +27,10 @@ from config import (
 )
 from discovery import (
     connect_speakers_direct,
-    discover_chromecasts,
+    find_speakers_by_name,
     get_device_metadata,
     play_on_all,
+    scan_network_for_speakers,
 )
 
 logger = logging.getLogger(__name__)
@@ -298,6 +300,93 @@ def _persist_discovered_hosts(devices: dict, speakers_config: dict) -> bool:
     return changed
 
 
+def _candidate_hosts(speakers_config: dict, max_hosts: int = 512) -> list[str]:
+    """Every IPv4 address in the /24 of each saved speaker host.
+
+    A speaker that changed IP almost certainly stayed within the same DHCP
+    subnet, so its old address tells us where to sweep.  Used only by the
+    unicast-scan fallback, so the cost is paid solely when a speaker is
+    otherwise unrecoverable.
+    """
+    nets = set()
+    for info in speakers_config.values():
+        host = info.get("host")
+        if not host:
+            continue
+        try:
+            addr = ipaddress.ip_address(host)
+        except ValueError:
+            continue
+        if addr.version != 4:
+            continue
+        nets.add(ipaddress.ip_network(f"{host}/24", strict=False))
+
+    hosts: list[str] = []
+    for net in sorted(nets, key=str):
+        for ip in net.hosts():
+            hosts.append(str(ip))
+            if len(hosts) >= max_hosts:
+                return hosts
+    return hosts
+
+
+def _refresh_saved_hosts(devices: dict) -> None:
+    """Persist current host/port for resolved devices; carry everything else.
+
+    Only ``host``/``port`` are touched — volume, schedules, enabled state and
+    every other per-speaker setting are keyed by friendly name and ride along
+    untouched.  Keeping the saved IP fresh means the next direct-connect hits
+    the right address even though DHCP moved the device.
+    """
+    if not devices:
+        return
+    try:
+        current = load_config()
+        speakers = current.get("speakers", {})
+        if _persist_discovered_hosts(devices, speakers):
+            current["speakers"] = speakers
+            save_config(current)
+    except Exception:
+        logger.exception("Failed to persist refreshed speaker hosts")
+
+
+def _locate_speakers(speakers_config: dict, names: list[str]) -> dict:
+    """Resolve speakers by name through escalating fallbacks, then persist IPs.
+
+    1. Direct-connect to the saved host (identity-verified).
+    2. mDNS lookup by friendly name — handles IP changes; covers groups.
+    3. Unicast subnet scan by name — works even when mDNS is unreliable.
+
+    Any device found at a new address has its host/port written back to config
+    so the fast path works next time.  Returns friendly_name -> Chromecast.
+    """
+    names = list(names)
+    if not names:
+        return {}
+
+    devices = connect_speakers_direct(speakers_config, names, timeout=10)
+
+    still = [n for n in names if n not in devices]
+    if still:
+        logger.info("  mDNS-by-name fallback for: %s", still)
+        devices.update(find_speakers_by_name(still, timeout=15))
+
+    still = [n for n in names if n not in devices]
+    if still:
+        hosts = _candidate_hosts(speakers_config)
+        if hosts:
+            devices.update(scan_network_for_speakers(still, hosts))
+        else:
+            logger.warning("No saved hosts to derive a scan range for: %s", still)
+
+    still = [n for n in names if n not in devices]
+    if still:
+        logger.warning("Could not locate speaker(s) by any method: %s", still)
+
+    _refresh_saved_hosts(devices)
+    return devices
+
+
 def _resolve_devices(
     speakers_config: dict,
     enabled: list[str],
@@ -305,9 +394,9 @@ def _resolve_devices(
 ) -> dict:
     """Return connected Chromecast objects for enabled speakers.
 
-    Tries (in order): fresh pre-warm cache, direct-connect by saved host,
-    mDNS fallback.  Any new hosts discovered via mDNS are persisted back
-    to config so future direct-connects hit the right IP.
+    Uses fresh pre-warm connections when available, otherwise locates each
+    missing speaker by name (direct-connect -> mDNS -> unicast scan) and
+    persists any refreshed IPs.
     """
     devices = _get_prewarmed(prayer_name)
     if devices:
@@ -326,26 +415,7 @@ def _resolve_devices(
 
     missing = [n for n in enabled if n not in devices]
     if missing:
-        direct = connect_speakers_direct(speakers_config, missing, timeout=10)
-        devices.update(direct)
-
-    still_missing = [n for n in enabled if n not in devices]
-    if still_missing:
-        logger.info("  mDNS fallback for: %s", still_missing)
-        discovered = discover_chromecasts(timeout=15, use_cache=False)
-        newly_found = {n: discovered[n] for n in still_missing if n in discovered}
-        devices.update(newly_found)
-
-        if newly_found:
-            # Persist any freshly-discovered IPs so we don't need mDNS next time
-            try:
-                current = load_config()
-                speakers = current.get("speakers", {})
-                if _persist_discovered_hosts(newly_found, speakers):
-                    current["speakers"] = speakers
-                    save_config(current)
-            except Exception:
-                logger.exception("Failed to persist refreshed speaker hosts")
+        devices.update(_locate_speakers(speakers_config, missing))
 
     return devices
 
@@ -514,22 +584,7 @@ def _prewarm_speakers(prayer_name: str | None = None) -> None:
 
     logger.info("Pre-warming %d speaker(s) for %s...", len(enabled), prayer_name or "next event")
 
-    devices = connect_speakers_direct(speakers, enabled, timeout=10)
-
-    missing = [n for n in enabled if n not in devices]
-    if missing:
-        discovered = discover_chromecasts(timeout=15, use_cache=False)
-        newly_found = {n: discovered[n] for n in missing if n in discovered}
-        devices.update(newly_found)
-        if newly_found:
-            try:
-                current = load_config()
-                speakers_cur = current.get("speakers", {})
-                if _persist_discovered_hosts(newly_found, speakers_cur):
-                    current["speakers"] = speakers_cur
-                    save_config(current)
-            except Exception:
-                logger.exception("Failed to persist refreshed speaker hosts during pre-warm")
+    devices = _locate_speakers(speakers, enabled)
 
     _store_prewarm(prayer_name, devices)
     logger.info(

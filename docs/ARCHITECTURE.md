@@ -271,7 +271,14 @@ trigger_adhan(prayer_name)
 For each enabled speaker in config["speakers"]:
   │
   ▼
-pychromecast.get_chromecast_from_cast_info(speaker_info)
+_resolve_devices()  # name-keyed, self-healing — see §4.11
+  ├── 1. pre-warmed connection (opened ~90s earlier), else…
+  ├── 2. direct-connect to saved IP, identity-verified by friendly name
+  ├── 3. mDNS lookup by name        (recovers a changed IP; covers groups)
+  └── 4. unicast subnet scan by name (mDNS-independent fallback)
+  │      └── any new IP is written back to config (other settings untouched)
+  ▼
+play_on_all() → per speaker, in parallel:
   ├── Opens TLS socket to <nest-ip>:8009
   ├── Cast protocol LAUNCH default media receiver
   └── Cast protocol LOAD with media URL + autoplay
@@ -582,6 +589,25 @@ Filename encoding is the right amount of structure for this scale.
 - ❌ No formal code review step — fine for a solo project, would need to change if a collaborator joins
 
 This is a project-phase decision, not a permanent one. When a second maintainer joins, flip to PR-required.
+
+### 4.11. Self-healing speaker resolution keyed on friendly name
+
+**Context:** Google Nest/Home speakers get their IP from the home router's DHCP. Without a DHCP reservation (which we can't assume a gift recipient will configure), a speaker's IP can change after a lease renewal or an overnight firmware reboot — typically about a week in. The saved IP then points at nothing (or, worse, at a *different* cast device DHCP handed the old address to). Direct-connect burns pychromecast's ~30 s connection timeout and the adhan logs `FAIL`, or the speaker is never found at all. One speaker drifts while the others keep working, so it's not a scheduler problem — it's a stale-address problem.
+
+**Decision:** Treat the **friendly name as the stable identity** and the IP as a disposable hint. `_resolve_devices` / `_locate_speakers` resolve each enabled speaker through an escalating chain, and write any rediscovered address back to `config.json`:
+
+1. **Direct-connect to the saved IP, identity-verified.** `connect_by_host(..., expected_name=name)` rejects the connection if the device answering at that address reports a *different* friendly name — so a recycled DHCP lease never causes playback on the wrong speaker.
+2. **mDNS lookup by name** (`find_speakers_by_name`) — actively hunts for the specific names via `get_listed_chromecasts(friendly_names=[...])`. Recovers a moved IP and is the only path that can recover a **Cast group** (groups use an ephemeral port, not :8009).
+3. **Unicast subnet scan by name** (`scan_network_for_speakers`) — last resort for when mDNS multicast is unreliable (WiFi multicast filtering, IGMP snooping, mesh routers, which is the common reason self-heal *wouldn't* otherwise happen). Fast-probes the /24 of each known speaker for an open :8009, then connects to the few that answer and matches by name. Individual speakers only.
+
+Whatever is found has its `host`/`port` persisted via `_persist_discovered_hosts`, which touches **only** those two fields — volume, per-prayer schedule, enabled state and everything else are keyed by name and carry forward untouched. Pre-warm (90 s before each prayer) runs the same chain, so a drifted IP is usually healed and re-saved before the adhan even fires.
+
+**Consequences:**
+- ✅ No DHCP reservation required — the system recovers from IP changes on its own.
+- ✅ Resilient to flaky mDNS: the unicast scan needs no multicast.
+- ✅ Can't be tricked into playing on the wrong device when an IP is recycled.
+- ❌ A **Cast group** whose IP/port changed can only be recovered via mDNS (step 2); if multicast is fully broken on that network, a group stays unreachable until it's rediscovered from the dashboard. Individual speakers have the scan as a backstop.
+- ⚠️ The scan is bounded (parallel TCP probe, /24 capped at 512 hosts) and only runs as a last resort, so it adds no cost to the happy path. It is **orthogonal** to the cast-playback hang timeout (see `fix/cast-hang-timeout`): this keeps the *address* correct; that bounds how long a genuinely unreachable device can stall playback.
 
 ---
 
