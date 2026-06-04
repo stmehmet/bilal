@@ -21,6 +21,21 @@ CACHE_TTL_SECONDS = 600  # 10 minutes (bumped from 5 — direct-connect is the f
 # gap removes the race.
 GROUP_VOLUME_STAGGER_SECONDS = 2.0
 
+# Hard cap on the initial ``device.wait()`` inside a play attempt.  Without
+# this, an unreachable speaker can chew through the entire per-prayer 45s
+# budget on the very first call — leaving no time for the retry in
+# ``play_on_chromecast`` and, worse, leaving a daemon thread blocked on a
+# socket that pychromecast never times out on.  When the device finally
+# recovers (Google Nest pushes overnight firmware and reboots around 3 AM)
+# that queued ``play_media`` completes and the speaker blasts a stale
+# adhan hours late.
+CAST_WAIT_TIMEOUT_SECONDS = 15
+
+# Absolute wall-clock budget across all speakers for one playback fan-out.
+# Per-thread join timeouts compound to N*45s if every speaker hangs; an
+# absolute deadline keeps the total bounded.
+PLAY_DEADLINE_SECONDS = 45
+
 
 def discover_chromecasts(timeout: int = 10, use_cache: bool = True) -> dict[str, pychromecast.Chromecast]:
     """Discover all Chromecast-compatible devices on the local network.
@@ -304,11 +319,19 @@ def _play_once(
     content_type: str,
     volume: float,
 ) -> bool:
-    device.wait()
+    device.wait(timeout=CAST_WAIT_TIMEOUT_SECONDS)
+    if device.status is None:
+        # wait() returns silently after timeout; status stays None when the
+        # connection never completed.  Raise so play_on_chromecast retries
+        # or moves on instead of pushing volume/play_media at a dead socket.
+        raise TimeoutError(
+            f"{device.cast_info.friendly_name}: not ready after "
+            f"{CAST_WAIT_TIMEOUT_SECONDS}s"
+        )
     device.set_volume(volume)
     # Groups sync volume across their members for a couple of seconds; sending
-    # play_media during that window can produce partial audio or no audio at
-    # all.  Give them a moment to settle.
+    # play_media immediately after set_volume can arrive mid-sync.  A small
+    # gap removes the race.
     if _is_group_device(device):
         time.sleep(GROUP_VOLUME_STAGGER_SECONDS)
     mc = device.media_controller
@@ -346,7 +369,7 @@ def play_on_chromecast(
                 "Chromecast error on %s (attempt %d/%d): %s",
                 name, attempt + 1, retries + 1, exc,
             )
-        except (OSError, ConnectionError) as exc:
+        except (OSError, ConnectionError, TimeoutError) as exc:
             last_exc = exc
             logger.warning(
                 "Network error on %s (attempt %d/%d): %s",
@@ -398,6 +421,7 @@ def play_on_all(
 
     threads: list[threading.Thread] = []
     thread_results: dict[str, bool] = {}
+    abandoned: set[str] = set()
     lock = threading.Lock()
 
     def _play(name: str) -> None:
@@ -412,6 +436,18 @@ def play_on_all(
             logger.exception("Unexpected error playing on %s", name)
         elapsed = time.time() - t0
         with lock:
+            if name in abandoned:
+                # Parent already logged a timeout and disconnected the cast for
+                # this speaker.  Logging again would produce a phantom "OK"
+                # entry hours after the fact when the underlying pychromecast
+                # call finally unblocks — exactly the 3 AM mass-replay we're
+                # trying to kill.
+                logger.warning(
+                    "  %s completed %.1fs after the %ds deadline (ok=%s); "
+                    "discarding result",
+                    name, elapsed, PLAY_DEADLINE_SECONDS, ok,
+                )
+                return
             thread_results[name] = ok
         if ok:
             logger.info("  %s responded in %.1fs", name, elapsed)
@@ -428,19 +464,33 @@ def play_on_all(
         threads.append(t)
         t.start()
 
+    # Single absolute deadline rather than a per-thread join(timeout=45):
+    # the latter compounds to N*45s in the worst case, which is what kept
+    # daemon threads alive long enough to fire at 3 AM.
+    deadline = time.time() + PLAY_DEADLINE_SECONDS
     for t in threads:
-        t.join(timeout=45)
+        remaining = max(0.0, deadline - time.time())
+        t.join(timeout=remaining)
 
-    # Any thread that didn't finish in time
     for name in present:
-        if name not in thread_results:
-            logger.error("  %s TIMED OUT (no response in 45s)", name)
-            thread_results[name] = False
-            if on_result is not None:
-                try:
-                    on_result(name, False, 45.0, "timeout")
-                except Exception:
-                    logger.exception("on_result callback raised")
+        with lock:
+            if name in thread_results:
+                continue
+            abandoned.add(name)
+        logger.error("  %s TIMED OUT (no response in %ds)", name, PLAY_DEADLINE_SECONDS)
+        # Disconnecting closes the socket the worker is blocked on, so
+        # pychromecast errors out instead of completing the cast later.
+        # ``timeout=0`` avoids blocking this thread on the disconnect itself.
+        try:
+            devices[name].disconnect(timeout=0)
+        except Exception:
+            logger.exception("Failed to disconnect %s after timeout", name)
+        thread_results[name] = False
+        if on_result is not None:
+            try:
+                on_result(name, False, float(PLAY_DEADLINE_SECONDS), "timeout")
+            except Exception:
+                logger.exception("on_result callback raised")
 
     results.update(thread_results)
     return results
