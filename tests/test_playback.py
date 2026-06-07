@@ -215,6 +215,46 @@ class TestDisconnectAll:
         discovery.disconnect_all({})  # must not raise
 
 
+class TestWakeSettle:
+    """Display/hub devices need a beat after connect to launch their media
+    receiver, or the first cast wakes them and immediately 'hangs up'."""
+
+    def _capture_sleeps(self, monkeypatch):
+        slept = []
+        monkeypatch.setattr(discovery.time, "sleep", lambda s: slept.append(s))
+        return slept
+
+    def test_display_device_gets_wake_settle(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Display")
+        dev.cast_info.cast_type = "cast"  # Nest Hub / Chromecast
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.DISPLAY_WAKE_SETTLE_SECONDS in slept
+        # And it happens BEFORE play_media, not after.
+        dev.media_controller.play_media.assert_called_once()
+
+    def test_audio_speaker_takes_no_settle_penalty(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Office speaker")
+        dev.cast_info.cast_type = "audio"  # Nest Mini — ready immediately
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert slept == []
+
+    def test_group_keeps_volume_stagger(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Upstairs")
+        dev.cast_info.cast_type = "group"
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.GROUP_VOLUME_STAGGER_SECONDS in slept
+
+    def test_unknown_type_defaults_to_settle(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Mystery")
+        dev.cast_info.cast_type = "something-new"
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.DISPLAY_WAKE_SETTLE_SECONDS in slept
+
+
 class TestPlayOnSpeakersReleasesConnections:
     """``_play_on_speakers`` must disconnect every device it opened — leaving
     them connected is what let worker threads accumulate into the 53GB-log storm.

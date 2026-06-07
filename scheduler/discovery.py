@@ -1,6 +1,7 @@
 """mDNS device discovery + direct-connect for Google Nest/Home speakers."""
 
 import logging
+import os
 import socket
 import time
 import threading
@@ -20,6 +21,14 @@ CACHE_TTL_SECONDS = 600  # 10 minutes (bumped from 5 — direct-connect is the f
 # play_media immediately after set_volume can arrive mid-sync.  A small
 # gap removes the race.
 GROUP_VOLUME_STAGGER_SECONDS = 2.0
+
+# A just-connected display/video device (Nest Hub, Chromecast) needs a beat to
+# wake its screen and launch the Default Media Receiver before it can accept
+# play_media.  Without it the FIRST cast makes the device chime awake and then
+# immediately "hang up" — only the retry lands, because by then the receiver has
+# finished launching.  Baking the wait in makes the first attempt reliable.
+# Overridable via env for tuning on a specific unit without a rebuild.
+DISPLAY_WAKE_SETTLE_SECONDS = float(os.getenv("DISPLAY_WAKE_SETTLE_SECONDS", "3.0"))
 
 # Hard cap on the initial ``device.wait()`` inside a play attempt.  Without
 # this, an unreachable speaker can chew through the entire per-prayer 45s
@@ -388,6 +397,27 @@ def _is_group_device(device: pychromecast.Chromecast) -> bool:
     return getattr(device.cast_info, "cast_type", "cast") == "group"
 
 
+def _settle_seconds(device: pychromecast.Chromecast) -> float:
+    """How long to wait after connecting before pushing media at a device.
+
+    Device classes aren't all ready to receive media the instant the cast
+    connection opens:
+      * ``group`` — members sync volume for ~2s; play_media sent mid-sync races
+        the volume mesh.
+      * ``cast`` (display/video: Nest Hub, Chromecast) — wakes its screen and
+        launches the Default Media Receiver on first connect; media sent before
+        that finishes makes the device chime awake and immediately "hang up".
+      * ``audio`` (Nest Mini/Home) — ready immediately, so it pays no penalty.
+    Unknown types are treated like displays (the safe, slightly slower choice).
+    """
+    cast_type = getattr(device.cast_info, "cast_type", "cast")
+    if cast_type == "group":
+        return GROUP_VOLUME_STAGGER_SECONDS
+    if cast_type == "audio":
+        return 0.0
+    return DISPLAY_WAKE_SETTLE_SECONDS
+
+
 def _play_once(
     device: pychromecast.Chromecast,
     media_url: str,
@@ -404,11 +434,13 @@ def _play_once(
             f"{CAST_WAIT_TIMEOUT_SECONDS}s"
         )
     device.set_volume(volume)
-    # Groups sync volume across their members for a couple of seconds; sending
-    # play_media immediately after set_volume can arrive mid-sync.  A small
-    # gap removes the race.
-    if _is_group_device(device):
-        time.sleep(GROUP_VOLUME_STAGGER_SECONDS)
+    # Let a just-woken device settle before loading media: groups finish their
+    # volume mesh-sync, and display/hub devices finish launching the media
+    # receiver.  Sending play_media too early is what makes a Nest Hub chime
+    # awake and then immediately "hang up" on the first attempt.
+    settle = _settle_seconds(device)
+    if settle:
+        time.sleep(settle)
     mc = device.media_controller
     mc.play_media(media_url, content_type)
     mc.block_until_active(timeout=30)

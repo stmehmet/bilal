@@ -36,6 +36,8 @@ services:
       - SCHEDULER_PATH=/app/scheduler
       - WEB_PORT=5000
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
+      # Wake-settle for display/hub devices (Nest Hub). See .env.example.
+      - DISPLAY_WAKE_SETTLE_SECONDS=${DISPLAY_WAKE_SETTLE_SECONDS:-3.0}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     # Run as non-root inside container (USER directive in Dockerfile)
@@ -56,6 +58,8 @@ services:
       - WEB_PORT=5000
       # Optional dead-man's-switch ping URL (see .env.example). No-op if unset.
       - HEALTHCHECK_PING_URL=${HEALTHCHECK_PING_URL:-}
+      # Wake-settle for display/hub devices (Nest Hub). See .env.example.
+      - DISPLAY_WAKE_SETTLE_SECONDS=${DISPLAY_WAKE_SETTLE_SECONDS:-3.0}
     depends_on:
       web:
         condition: service_healthy

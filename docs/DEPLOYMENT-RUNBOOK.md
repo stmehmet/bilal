@@ -497,6 +497,21 @@ A wiped (0-byte) `config.json` self-heals on the first successful save; the dash
 - **Storm fixed at the source** — the scheduler disconnects every cast after playback (and when evicting pre-warm entries), so worker threads can't accumulate and spin.
 - **Clear errors** — a save that can't write returns HTTP 507 "disk may be full or read-only" instead of a generic failure the UI rendered as "Detection failed".
 
+### Nest Hub / display: first cast wakes it then "hangs up", second attempt works
+
+**Symptom:** On a Nest Hub (or other display), the first **Test** / first prayer makes the device chime awake and then immediately play a "hang up" sound without the adhan. A second attempt works: wake nudge → single confirmation tone → adhan plays.
+
+**Cause:** A display device keeps its cast receiver unloaded while idle. The first connection wakes the screen and launches the Default Media Receiver, but `play_media` is sent before the receiver finishes launching, so the load fails and the session closes. By the second attempt the receiver is up, so it lands. Plain audio speakers (Nest Mini/Home) don't do this — they're ready immediately.
+
+**Fix (shipped v1.4.0):** `_play_once` now waits `DISPLAY_WAKE_SETTLE_SECONDS` (default **3s**) after connecting before sending media to `cast`-type (display/video) devices, so the receiver is ready on the first attempt. Audio speakers take no delay; groups keep their 2s volume-sync stagger. The Test button also gets an extra retry (cold-start, no pre-warm).
+
+**If a specific hub is still flaky on the first try,** bump the settle without a rebuild — set it in `~/bilal/.env` and restart:
+
+```bash
+echo "DISPLAY_WAKE_SETTLE_SECONDS=5.0" >> ~/bilal/.env
+cd ~/bilal && docker compose up -d
+```
+
 ### `Discover Speakers` returns an empty list even though Nest speakers are on the same WiFi
 
 **Cause:** Docker's default bridge network does **not** forward multicast traffic. `pychromecast` relies on mDNS on `224.0.0.251:5353` to find Chromecast devices. If the `web` or `scheduler` containers are on a bridge network, the scan silently returns nothing.

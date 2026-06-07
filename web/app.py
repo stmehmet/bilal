@@ -809,7 +809,10 @@ def api_test_speaker():
 
     if device:
         vol = speaker_info.get("volume", config.get("volume", 0.5))
-        ok = play_on_chromecast(device, media_url, volume=vol)
+        # One extra retry vs. the scheduled path: the Test button is the cold-
+        # start case (no pre-warm), and a groggy Nest Hub display sometimes needs
+        # a second go even with the wake-settle. It's manual, so latency is fine.
+        ok = play_on_chromecast(device, media_url, volume=vol, retries=2)
         return jsonify({"status": "ok" if ok else "failed"})
     return jsonify({"error": f"Speaker '{speaker_name}' not found"}), 404
 
