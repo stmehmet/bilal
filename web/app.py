@@ -44,6 +44,7 @@ from discovery import discover_chromecasts, get_device_metadata  # noqa: E402
 from geolocation import detect_location, geocode_address  # noqa: E402
 from adhan_scheduler import compute_prayer_times, compute_iqamah_times, validate_audio_files  # noqa: E402
 import playback_log  # noqa: E402
+import diskspace  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
@@ -883,6 +884,7 @@ def api_status():
 
     config = load_config()
     audio_missing = validate_audio_files(config)
+    disk = diskspace.usage()
 
     status = {
         "version": APP_VERSION,
@@ -900,6 +902,11 @@ def api_status():
         "iqamah_enabled": config.get("iqamah_enabled", False),
         # Staleness signal: when did this unit last successfully play an adhan?
         "last_playback_success": playback_log.last_success(),
+        # Disk headroom on the data volume — a near-full SD card silently takes
+        # a unit dark even while playback still works (the 2026-06-07 outage).
+        # ``None`` when the probe can't read the filesystem.
+        "disk_free_pct": disk["free_pct"] if disk else None,
+        "disk_free_bytes": disk["free_bytes"] if disk else None,
         "server_time": datetime.datetime.now(
             pytz.timezone(config.get("timezone", "UTC"))
         ).isoformat(),

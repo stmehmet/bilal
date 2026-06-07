@@ -51,6 +51,17 @@
       </div>
     </div>
 
+    <!-- Disk Space Warning Banner (populated by JS) -->
+    <div id="disk-warning" class="hidden bg-red-900/60 border border-red-700 rounded-2xl shadow-lg p-4">
+      <div class="flex items-start gap-3">
+        <i class="ph ph-hard-drives text-red-400 text-2xl mt-0.5"></i>
+        <div>
+          <h3 class="text-red-300 font-medium text-sm">Low Disk Space</h3>
+          <p id="disk-warning-text" class="text-red-200/80 text-sm mt-1"></p>
+        </div>
+      </div>
+    </div>
+
     <!-- Next Prayer Countdown -->
     {% if next_prayer %}
     <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
@@ -1274,9 +1285,35 @@
       } catch {}
     }
 
+    // ── Disk space ───────────────────────────────────────────────────────────
+    // Warn well before the heartbeat's critical floor (5% / 500 MB) so a
+    // filling SD card is visible while there's still time to act — a full disk
+    // silently takes the unit offline even while adhan still plays.
+    const DISK_WARN_PCT = 10;
+    function formatBytes(n) {
+      if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB';
+      return Math.round(n / 1024 ** 2) + ' MB';
+    }
+    async function checkDiskSpace() {
+      try {
+        const resp = await fetch('/api/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.disk_free_pct == null) return;  // probe couldn't read the disk
+        if (data.disk_free_pct >= DISK_WARN_PCT) return;
+        const el = document.getElementById('disk-warning');
+        const text = document.getElementById('disk-warning-text');
+        const free = data.disk_free_bytes != null ? formatBytes(data.disk_free_bytes) : 'very little space';
+        text.textContent = `Only ${data.disk_free_pct}% (${free}) free on the data volume. ` +
+          'Free up space soon — a full disk takes this unit offline even while adhan still plays.';
+        el.classList.remove('hidden');
+      } catch {}
+    }
+
     // Init
     loadWifiStatus();
     checkAudioFiles();
+    checkDiskSpace();
   </script>
 </body>
 </html>

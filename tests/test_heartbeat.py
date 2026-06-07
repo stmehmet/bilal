@@ -1,7 +1,23 @@
 """Tests for the heartbeat dead-man's switch and its wiring into playback."""
 
+import pytest
+
 import heartbeat
 import adhan_scheduler as sched
+
+
+@pytest.fixture(autouse=True)
+def _healthy_disk_by_default(monkeypatch):
+    """Default every heartbeat test to a healthy disk.
+
+    ping_success() now suppresses the ping when the data volume is critically
+    full, so without this a test machine that happened to be near-full would
+    spuriously fail the ping tests.  The disk-guard tests override this.
+    """
+    monkeypatch.setattr(
+        heartbeat.diskspace, "usage",
+        lambda: {"total_bytes": 10**12, "free_bytes": 8 * 10**11, "free_pct": 80.0},
+    )
 
 
 class _SyncThread:
@@ -91,3 +107,66 @@ class TestPlaybackHeartbeatWiring:
                             lambda: pinged.__setitem__("n", pinged["n"] + 1))
         sched._play_on_speakers("http://x/a.mp3", self._cfg(), "Adhan (Fajr)", prayer_name="Fajr")
         assert pinged["n"] == 0
+
+
+class TestHeartbeatDiskGuard:
+    """A critically-full disk must suppress the ping so the switch can fire."""
+
+    @staticmethod
+    def _usage(free_pct, free_bytes):
+        return {"total_bytes": 10**12, "free_pct": free_pct, "free_bytes": free_bytes}
+
+    def test_low_by_percentage(self):
+        assert heartbeat._is_critically_low(self._usage(4.9, 10**12)) is True
+
+    def test_low_by_absolute_bytes(self):
+        # Healthy percentage but under the 500 MB floor (large-volume guard).
+        assert heartbeat._is_critically_low(self._usage(50.0, 100 * 1024 * 1024)) is True
+
+    def test_healthy_disk_is_not_low(self):
+        assert heartbeat._is_critically_low(self._usage(50.0, 10**12)) is False
+
+    def test_threshold_boundary_is_not_low(self):
+        # Exactly at the floors counts as healthy (strict less-than).
+        assert heartbeat._is_critically_low(
+            self._usage(heartbeat.CRITICAL_FREE_PCT, heartbeat.CRITICAL_FREE_BYTES)
+        ) is False
+
+    def test_unknown_usage_is_not_low(self):
+        # A failed probe must never trip the switch on its own.
+        assert heartbeat._is_critically_low(None) is False
+
+    def test_suppresses_ping_when_disk_low(self, monkeypatch):
+        monkeypatch.setenv("HEALTHCHECK_PING_URL", "https://hc.example/abc")
+        monkeypatch.setattr(heartbeat.diskspace, "usage",
+                            lambda: self._usage(2.0, 50 * 1024 * 1024))
+        _CountingThread.started = 0
+        monkeypatch.setattr(heartbeat.threading, "Thread", _CountingThread)
+        heartbeat.ping_success()
+        assert _CountingThread.started == 0  # no ping → dead-man's switch fires
+
+    def test_pings_when_disk_healthy(self, monkeypatch):
+        monkeypatch.setenv("HEALTHCHECK_PING_URL", "https://hc.example/abc")
+        monkeypatch.setattr(heartbeat.diskspace, "usage",
+                            lambda: self._usage(80.0, 10**12))
+        _CountingThread.started = 0
+        monkeypatch.setattr(heartbeat.threading, "Thread", _CountingThread)
+        heartbeat.ping_success()
+        assert _CountingThread.started == 1
+
+    def test_pings_when_usage_unknown(self, monkeypatch):
+        monkeypatch.setenv("HEALTHCHECK_PING_URL", "https://hc.example/abc")
+        monkeypatch.setattr(heartbeat.diskspace, "usage", lambda: None)
+        _CountingThread.started = 0
+        monkeypatch.setattr(heartbeat.threading, "Thread", _CountingThread)
+        heartbeat.ping_success()
+        assert _CountingThread.started == 1
+
+    def test_logs_warning_when_disk_low(self, monkeypatch, caplog):
+        monkeypatch.setenv("HEALTHCHECK_PING_URL", "https://hc.example/abc")
+        monkeypatch.setattr(heartbeat.diskspace, "usage",
+                            lambda: self._usage(2.0, 50 * 1024 * 1024))
+        monkeypatch.setattr(heartbeat.threading, "Thread", _CountingThread)
+        with caplog.at_level("WARNING"):
+            heartbeat.ping_success()
+        assert "Disk critically low" in caplog.text
