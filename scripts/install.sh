@@ -48,6 +48,33 @@ if ! docker compose version &>/dev/null 2>&1; then
     sudo apt-get install -y -qq docker-compose-plugin
 fi
 
+# ---------------------------------------------------------------------------
+# 1b. Docker log rotation (host-wide safety net)
+#     Docker's default json-file driver is UNBOUNDED — a runaway container can
+#     fill the SD card to 100% and silently take the unit dark (this happened:
+#     a pychromecast reconnect storm grew one log to 53GB). Cap every
+#     container's logs at the daemon level so the limit holds even for
+#     containers that bypass the compose-level logging stanza. Idempotent: an
+#     existing daemon.json is left untouched.
+# ---------------------------------------------------------------------------
+if [ ! -f /etc/docker/daemon.json ]; then
+    log "Configuring Docker log rotation (10MB x 3 per container)..."
+    sudo mkdir -p /etc/docker
+    sudo tee /etc/docker/daemon.json >/dev/null <<'JSON'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+JSON
+    sudo systemctl restart docker 2>/dev/null || true
+    log "Docker log rotation configured."
+else
+    log "/etc/docker/daemon.json already present — leaving it untouched."
+fi
+
 # Use sudo for docker commands if the current session isn't in the docker
 # group yet (usermod takes effect only after re-login).
 if docker ps &>/dev/null; then

@@ -76,6 +76,22 @@ def _safe_disconnect(device: pychromecast.Chromecast) -> None:
         pass
 
 
+def disconnect_all(devices: dict) -> None:
+    """Disconnect every Chromecast in a ``name -> device`` map, swallowing errors.
+
+    pychromecast spawns a background socket-worker thread per live connection
+    that GC does NOT reap — it only stops on an explicit ``disconnect()``.  A
+    kept device whose mDNS browser was already stopped will, on its next
+    connection drop, spin trying to reconnect through a dead zeroconf
+    (``AssertionError: Zeroconf instance loop must be running``) and flood the
+    logs at hundreds of lines/sec.  Disconnecting devices the moment we're done
+    with them is what stops those worker threads from accumulating into the
+    log-flooding storm that once filled a Pi's disk to 100%.
+    """
+    for device in devices.values():
+        _safe_disconnect(device)
+
+
 def _cast_uuid(cast_info) -> str | None:
     """Return a device's UUID as a string, or None if it has none.
 

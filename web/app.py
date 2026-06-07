@@ -37,6 +37,7 @@ sys.path.insert(0, os.getenv("SCHEDULER_PATH", "/app/scheduler"))
 from config import (  # noqa: E402
     CALCULATION_METHODS,
     PRAYER_NAMES,
+    ConfigWriteError,
     load_config,
     save_config,
 )
@@ -47,6 +48,25 @@ import playback_log  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
+
+
+@app.errorhandler(ConfigWriteError)
+def _handle_config_write_error(exc):
+    """Turn an un-persistable config into a clear, actionable error.
+
+    Any of the config-saving endpoints can hit this when the disk is full or
+    read-only.  Returning 507 with a plain message — instead of a bare 500 the
+    UI renders as a generic "failed" — is what tells the user the real problem
+    (and stops a full disk from looking like "detection failed").  Both
+    ``error`` and ``errors`` keys are set so every frontend handler shows it.
+    """
+    logger.error("Config write failed: %s", exc)
+    msg = (
+        "Could not save — the device's disk may be full or read-only. "
+        "Free up space and try again."
+    )
+    return jsonify({"status": "error", "error": msg, "errors": [msg]}), 507
+
 
 AUDIO_DIR = Path(os.getenv("AUDIO_DIR", "/audio"))
 AUTH_FILE = Path(os.getenv("CONFIG_DIR", "/data")) / "auth.json"

@@ -3,9 +3,19 @@
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+class ConfigWriteError(OSError):
+    """Raised when config.json cannot be persisted (full disk / read-only FS).
+
+    Subclasses ``OSError`` so existing ``except OSError`` handlers still catch
+    it, but is specific enough that the web layer can turn it into a clear
+    "couldn't write to disk" message instead of a generic 500.
+    """
 
 CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/data"))
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -116,6 +126,29 @@ def _strip_deprecated_keys(config: dict) -> bool:
     return changed
 
 
+def _quarantine_corrupt_config() -> None:
+    """Preserve a corrupt config.json instead of silently losing it.
+
+    Copies the bad file to ``config.json.corrupt`` (once — an existing backup is
+    never overwritten, so the *first* corruption is the one kept for inspection).
+    We deliberately do NOT delete or overwrite config.json here: the caller falls
+    back to in-memory defaults for this run, and the next ``save_config`` replaces
+    it atomically.  The point is to make corruption loud and recoverable rather
+    than a silent reset to defaults (which is how a unit goes dark unnoticed).
+    """
+    try:
+        backup = CONFIG_FILE.with_suffix(CONFIG_FILE.suffix + ".corrupt")
+        if not backup.exists():
+            shutil.copy2(CONFIG_FILE, backup)
+            logger.error(
+                "Backed up corrupt config to %s; running on in-memory defaults "
+                "until a valid config is saved",
+                backup,
+            )
+    except OSError as exc:
+        logger.warning("Could not back up corrupt config: %s", exc)
+
+
 def load_config() -> dict:
     """Load configuration from disk, merging with defaults."""
     config = DEFAULT_CONFIG.copy()
@@ -126,6 +159,7 @@ def load_config() -> dict:
             config.update(stored)
         except json.JSONDecodeError as exc:
             logger.error("Corrupt config file %s: %s", CONFIG_FILE, exc)
+            _quarantine_corrupt_config()
         except OSError as exc:
             logger.error("Cannot read config file %s: %s", CONFIG_FILE, exc)
     migrated = _migrate_audio_filenames(config)
@@ -136,13 +170,39 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    """Persist configuration to disk and signal watchers."""
+    """Persist configuration to disk atomically and signal watchers.
+
+    Writes to a temp file in the same directory, fsyncs, then ``os.replace``s it
+    over the live file — an atomic rename, so a crash or a full disk can never
+    leave a half-written or truncated config.json behind.  (Before this, an
+    ENOSPC mid-write truncated config.json to 0 bytes; the unit then silently
+    fell back to defaults and lost every user setting.)
+
+    Raises ``ConfigWriteError`` if the file cannot be written.
+    """
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    # Touch a signal file so the scheduler can detect config changes
-    _signal_file = CONFIG_DIR / ".config_changed"
-    _signal_file.write_text(str(os.getpid()))
+    tmp = CONFIG_FILE.with_suffix(CONFIG_FILE.suffix + ".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(config, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CONFIG_FILE)
+    except OSError as exc:
+        # Don't leave the partial temp file occupying space on an already-full disk.
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        logger.error("Could not write config file %s: %s", CONFIG_FILE, exc)
+        raise ConfigWriteError(str(exc)) from exc
+    # Touch a signal file so the scheduler can detect config changes.  A failure
+    # here is non-fatal — the config itself is already safely persisted.
+    try:
+        signal_file = CONFIG_DIR / ".config_changed"
+        signal_file.write_text(str(os.getpid()))
+    except OSError as exc:
+        logger.warning("Could not update config-changed signal file: %s", exc)
 
 
 def config_changed_since(last_check: float) -> bool:

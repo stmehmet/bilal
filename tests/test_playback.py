@@ -193,3 +193,64 @@ class TestPlayOnChromecastRetriesTimeout:
         ok = discovery.play_on_chromecast(dev, "http://x/a.mp3")
         assert ok is True
         assert len(calls) == 2
+
+
+class TestDisconnectAll:
+    """Disconnecting devices after use is what prevents the pychromecast
+    socket-worker reconnect storm that floods logs and fills the disk."""
+
+    def test_disconnects_every_device(self):
+        d1 = _make_device("A")
+        d2 = _make_device("B")
+        discovery.disconnect_all({"A": d1, "B": d2})
+        d1.disconnect.assert_called_once()
+        d2.disconnect.assert_called_once()
+
+    def test_swallows_disconnect_errors(self):
+        bad = _make_device("Bad")
+        bad.disconnect.side_effect = RuntimeError("boom")
+        discovery.disconnect_all({"Bad": bad})  # must not raise
+
+    def test_empty_map_is_noop(self):
+        discovery.disconnect_all({})  # must not raise
+
+
+class TestPlayOnSpeakersReleasesConnections:
+    """``_play_on_speakers`` must disconnect every device it opened — leaving
+    them connected is what let worker threads accumulate into the 53GB-log storm.
+    """
+
+    def _config(self):
+        return {
+            "volume": 0.5,
+            "timezone": "UTC",
+            "speakers": {"Office": {"enabled": True}},
+        }
+
+    def test_disconnects_after_successful_play(self, monkeypatch):
+        import adhan_scheduler as sch
+
+        dev = _make_device("Office")
+        monkeypatch.setattr(sch, "_filter_by_schedule", lambda enabled, *a, **k: enabled)
+        monkeypatch.setattr(sch, "_resolve_devices", lambda *a, **k: {"Office": dev})
+        monkeypatch.setattr(sch, "play_on_all", lambda *a, **k: {"Office": True})
+        monkeypatch.setattr(sch.heartbeat, "ping_success", lambda *a, **k: None)
+
+        sch._play_on_speakers("http://x/a.mp3", self._config(), "Test", "Dhuhr")
+        dev.disconnect.assert_called_once()
+
+    def test_disconnects_even_when_play_raises(self, monkeypatch):
+        import adhan_scheduler as sch
+
+        dev = _make_device("Office")
+        monkeypatch.setattr(sch, "_filter_by_schedule", lambda enabled, *a, **k: enabled)
+        monkeypatch.setattr(sch, "_resolve_devices", lambda *a, **k: {"Office": dev})
+
+        def boom(*_a, **_k):
+            raise RuntimeError("cast exploded")
+
+        monkeypatch.setattr(sch, "play_on_all", boom)
+
+        # Should swallow the error (logged) AND still disconnect in the finally.
+        sch._play_on_speakers("http://x/a.mp3", self._config(), "Test", "Dhuhr")
+        dev.disconnect.assert_called_once()
