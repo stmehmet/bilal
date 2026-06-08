@@ -1,6 +1,18 @@
 # ---- Bilal Home Adhan System ----
 # Orchestrates the Web UI, Adhan Scheduler, and Watchtower for auto-updates.
 
+# Cap every container's logs. Docker's default json-file driver is UNBOUNDED —
+# a misbehaving container (a pychromecast reconnect storm) once grew a single
+# log file to 53GB and filled a Pi's SD card to 100%, which truncated
+# config.json and took the unit dark. 10MB x 3 files = 30MB hard ceiling each.
+# (The Pis also set this as a daemon-wide default in /etc/docker/daemon.json;
+# this per-service stanza is the version-controlled, self-documenting copy.)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # --- Web Dashboard ---
   # Runs on the host network because the "Discover Speakers" endpoint calls
@@ -13,6 +25,7 @@ services:
     image: ghcr.io/stmehmet/bilal-web:latest
     container_name: bilal-web
     restart: unless-stopped
+    logging: *default-logging
     network_mode: host          # Required for mDNS / Chromecast discovery
     volumes:
       - bilal-data:/data
@@ -23,6 +36,8 @@ services:
       - SCHEDULER_PATH=/app/scheduler
       - WEB_PORT=5000
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
+      # Wake-settle for display/hub devices (Nest Hub). See .env.example.
+      - DISPLAY_WAKE_SETTLE_SECONDS=${DISPLAY_WAKE_SETTLE_SECONDS:-3.0}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     # Run as non-root inside container (USER directive in Dockerfile)
@@ -32,6 +47,7 @@ services:
     image: ghcr.io/stmehmet/bilal-scheduler:latest
     container_name: bilal-scheduler
     restart: unless-stopped
+    logging: *default-logging
     network_mode: host          # Required for mDNS / Chromecast discovery
     volumes:
       - bilal-data:/data
@@ -42,6 +58,8 @@ services:
       - WEB_PORT=5000
       # Optional dead-man's-switch ping URL (see .env.example). No-op if unset.
       - HEALTHCHECK_PING_URL=${HEALTHCHECK_PING_URL:-}
+      # Wake-settle for display/hub devices (Nest Hub). See .env.example.
+      - DISPLAY_WAKE_SETTLE_SECONDS=${DISPLAY_WAKE_SETTLE_SECONDS:-3.0}
     depends_on:
       web:
         condition: service_healthy
@@ -56,6 +74,7 @@ services:
     image: nickfedor/watchtower:latest
     container_name: bilal-watchtower
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:

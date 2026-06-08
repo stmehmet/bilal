@@ -792,13 +792,22 @@
     async function detectLocation() {
       const btn = document.getElementById('detect-btn');
       btn.textContent = 'Detecting...';
-      const resp = await fetch('/api/detect-location', { method: 'POST' });
-      if (resp.ok) {
-        const data = await resp.json();
-        applyLocation(data);
-        toast(`Detected: ${data.city}, ${data.country}`);
-      } else toast('Detection failed', true);
-      btn.textContent = 'Auto-detect from IP';
+      try {
+        const resp = await fetch('/api/detect-location', { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+          applyLocation(data);
+          toast(`Detected: ${data.city}, ${data.country}`);
+        } else {
+          // Surface the real reason (e.g. "disk full / read-only") instead of a
+          // generic message, and remind the user to Save once fields are filled.
+          toast(data.error || 'Could not detect location from IP', true);
+        }
+      } catch (err) {
+        toast('Network error during detection', true);
+      } finally {
+        btn.textContent = 'Auto-detect from IP';
+      }
     }
 
     // Set the geocode status line with a Phosphor icon + plain-text message.

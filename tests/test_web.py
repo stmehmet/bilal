@@ -111,6 +111,49 @@ class TestConfigAPI:
         assert data["iqamah_enabled"] is True
         assert data["iqamah_audio_file"] == "custom.mp3"
 
+    def test_config_save_failure_returns_clear_507(self, logged_in_client, monkeypatch):
+        """A disk-full save surfaces an actionable 507 with a clear message —
+        not a bare 500 the UI renders as a generic 'failed'."""
+        import app as web_app
+        from config import ConfigWriteError
+
+        def boom(_config):
+            raise ConfigWriteError("No space left on device")
+
+        monkeypatch.setattr(web_app, "save_config", boom)
+        resp = logged_in_client.post(
+            "/api/config", json={"latitude": 1.0, "longitude": 2.0}
+        )
+        assert resp.status_code == 507
+        body = resp.get_json()
+        assert "disk" in body["error"].lower()
+        assert body["errors"]  # saveSettings() reads errors[0]
+
+    def test_detect_location_save_failure_is_disk_error_not_detection(
+        self, logged_in_client, monkeypatch
+    ):
+        """Detection succeeding but the save failing must read as a disk problem,
+        not the misleading 'detection failed' the user originally hit."""
+        import app as web_app
+        from config import ConfigWriteError
+
+        monkeypatch.setattr(
+            web_app,
+            "detect_location",
+            lambda: {
+                "latitude": 1.0, "longitude": 2.0,
+                "city": "Townsville", "country": "X", "timezone": "UTC",
+            },
+        )
+
+        def boom(_config):
+            raise ConfigWriteError("No space left on device")
+
+        monkeypatch.setattr(web_app, "save_config", boom)
+        resp = logged_in_client.post("/api/detect-location")
+        assert resp.status_code == 507
+        assert "disk" in resp.get_json()["error"].lower()
+
 
 # ---------------------------------------------------------------------------
 # Speaker discovery

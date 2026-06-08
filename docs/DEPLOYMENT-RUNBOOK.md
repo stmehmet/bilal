@@ -457,6 +457,61 @@ tailscale ssh --accept-new bilal@bilal-<machine-id>
 
 **Fix:** Fixed in PR #14 — switched to `nickfedor/watchtower:latest`, the actively maintained fork. Drop-in replacement. Now uses API v1.51 cleanly with Docker Engine 29.
 
+### Unit dark: disk 100% full, location shows "Unknown, Unknown", "Detection failed"
+
+**Symptom:** Dashboard shows `Unknown, Unknown` / "Location not configured"; **Auto-detect from IP** returns "Detection failed"; saving coordinates or an address doesn't stick. `bilal-scheduler` may be crash-looping. `df -h /` shows **100%** used.
+
+**Cause:** Docker's default `json-file` log driver is **unbounded**. A pychromecast socket-worker reconnect storm — a kept cast loses its connection and spins trying to reconnect through an already-stopped zeroconf (`AssertionError: Zeroconf instance loop must be running`) — floods stderr at hundreds of lines/sec. With no rotation, one container's log grew to **53GB** and filled the SD card (this hit both Pis on 2026-06-07). A full disk then makes `save_config()` fail with `ENOSPC`: the old non-atomic write truncated `config.json` to 0 bytes (→ silent fallback to defaults = "Unknown, Unknown"), and every save/detect returns 500 (→ "Detection failed", address won't persist).
+
+**Find the hog:**
+
+```bash
+tailscale ssh bilal@bilal-<hostname>
+df -h /                                                   # confirm 100%
+sudo du -xh --max-depth=2 /var/lib/docker | sort -rh | head
+# culprit is /var/lib/docker/containers/<id>/<id>-json.log
+docker inspect <id> --format '{{.Name}} restarts={{.RestartCount}}'
+```
+
+**Recover:**
+
+```bash
+cd ~/bilal && docker compose down   # removes containers → frees the giant log (volume/config preserved)
+df -h /                              # should drop dramatically
+docker image prune -f               # reclaim dangling layers
+docker compose up -d
+```
+
+A wiped (0-byte) `config.json` self-heals on the first successful save; the dashboard works again immediately for re-entering location + speakers. Custom per-speaker schedules/volumes are lost if there was no backup.
+
+**Prevent (shipped v1.4.0):**
+
+- **Log rotation** — `docker-compose.yml` caps every service at `max-size: 10m, max-file: 3`, and `install.sh` writes the same as a daemon-wide default in `/etc/docker/daemon.json`. To retrofit a unit installed before v1.4.0:
+  ```bash
+  sudo tee /etc/docker/daemon.json >/dev/null <<'JSON'
+  { "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+  JSON
+  sudo systemctl restart docker && cd ~/bilal && docker compose up -d
+  ```
+- **Atomic config writes** — `save_config` now writes a temp file + `os.replace`, so a full disk can never truncate `config.json` again.
+- **Storm fixed at the source** — the scheduler disconnects every cast after playback (and when evicting pre-warm entries), so worker threads can't accumulate and spin.
+- **Clear errors** — a save that can't write returns HTTP 507 "disk may be full or read-only" instead of a generic failure the UI rendered as "Detection failed".
+
+### Nest Hub / display: first cast wakes it then "hangs up", second attempt works
+
+**Symptom:** On a Nest Hub (or other display), the first **Test** / first prayer makes the device chime awake and then immediately play a "hang up" sound without the adhan. A second attempt works: wake nudge → single confirmation tone → adhan plays.
+
+**Cause:** A display device keeps its cast receiver unloaded while idle. The first connection wakes the screen and launches the Default Media Receiver, but `play_media` is sent before the receiver finishes launching, so the load fails and the session closes. By the second attempt the receiver is up, so it lands. Plain audio speakers (Nest Mini/Home) don't do this — they're ready immediately.
+
+**Fix (shipped v1.4.0):** `_play_once` now waits `DISPLAY_WAKE_SETTLE_SECONDS` (default **3s**) after connecting before sending media to `cast`-type (display/video) devices, so the receiver is ready on the first attempt. Audio speakers take no delay; groups keep their 2s volume-sync stagger. The Test button also gets an extra retry (cold-start, no pre-warm).
+
+**If a specific hub is still flaky on the first try,** bump the settle without a rebuild — set it in `~/bilal/.env` and restart:
+
+```bash
+echo "DISPLAY_WAKE_SETTLE_SECONDS=5.0" >> ~/bilal/.env
+cd ~/bilal && docker compose up -d
+```
+
 ### `Discover Speakers` returns an empty list even though Nest speakers are on the same WiFi
 
 **Cause:** Docker's default bridge network does **not** forward multicast traffic. `pychromecast` relies on mDNS on `224.0.0.251:5353` to find Chromecast devices. If the `web` or `scheduler` containers are on a bridge network, the scan silently returns nothing.
@@ -560,3 +615,17 @@ broken, which is why the ping is tied to playback success.
 
 `GET /api/status` also returns `last_playback_success` for an at-a-glance
 staleness check without SSH.
+
+### 3. Bounded container logs (disk can't fill)
+
+On 2026-06-07 **both** Pis hit 100% disk. A pychromecast reconnect storm flooded
+`bilal-scheduler`'s stderr, and Docker's default *unbounded* json-file driver let
+one log grow to **53GB**. The full disk then truncated `config.json` (the old
+non-atomic write + `ENOSPC`), so bilal-dev went dark showing "Unknown, Unknown"
+and "Detection failed". Fixes shipped in v1.4.0: `docker-compose.yml` caps every
+service's logs (`max-size: 10m, max-file: 3`), `install.sh` sets the same
+daemon-wide default in `/etc/docker/daemon.json`, and `save_config` is now an
+atomic temp-file + `os.replace` so a full disk can never truncate the config. The
+storm is fixed at its source — the scheduler disconnects casts after playback so
+worker threads don't accumulate and spin. See the disk-full entry in
+[Troubleshooting](#10-troubleshooting).

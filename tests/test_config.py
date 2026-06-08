@@ -43,6 +43,31 @@ class TestLoadConfig:
         # Should fall back to defaults
         assert result["timezone"] == "UTC"
 
+    def test_corrupt_config_is_quarantined_not_lost(self, tmp_path, monkeypatch):
+        """A corrupt config must be preserved for inspection, not silently reset.
+
+        Silently falling back to defaults is how a unit goes dark unnoticed; the
+        bad file should be kept so the failure is loud and recoverable.
+        """
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        cfg.CONFIG_FILE = tmp_path / "config.json"
+        (tmp_path / "config.json").write_text("NOT_VALID_JSON{{{")
+        result = cfg.load_config()
+        assert result["timezone"] == "UTC"  # still usable on defaults
+        backup = tmp_path / "config.json.corrupt"
+        assert backup.exists()
+        assert backup.read_text() == "NOT_VALID_JSON{{{"
+
+    def test_empty_config_file_falls_back_to_defaults(self, tmp_path, monkeypatch):
+        """A 0-byte config.json (exactly what an ENOSPC truncation produced on a
+        live unit) must not crash load_config."""
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        cfg.CONFIG_FILE = tmp_path / "config.json"
+        (tmp_path / "config.json").write_text("")
+        result = cfg.load_config()
+        assert result["latitude"] is None
+        assert result["timezone"] == "UTC"
+
 
 class TestSaveConfig:
     def test_persists_and_round_trips(self, tmp_path, monkeypatch):
@@ -62,6 +87,50 @@ class TestSaveConfig:
         cfg.CONFIG_FILE = nested / "config.json"
         cfg.save_config({"foo": "bar"})
         assert (nested / "config.json").exists()
+
+    def test_no_temp_file_left_after_success(self, tmp_path):
+        cfg.CONFIG_DIR = tmp_path
+        cfg.CONFIG_FILE = tmp_path / "config.json"
+        cfg.save_config({"latitude": 5.0})
+        # The atomic-rename temp must not linger after a normal write.
+        assert not (tmp_path / "config.json.tmp").exists()
+        assert json.loads((tmp_path / "config.json").read_text())["latitude"] == 5.0
+
+    def test_failed_write_preserves_existing_config(self, tmp_path, monkeypatch):
+        """The regression test for the outage: a write that fails mid-flight
+        (ENOSPC) must NOT destroy the config already on disk."""
+        cfg.CONFIG_DIR = tmp_path
+        cfg.CONFIG_FILE = tmp_path / "config.json"
+        cfg.save_config({"latitude": 1.0, "city": "Original"})
+
+        def enospc(*_args, **_kwargs):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(cfg.json, "dump", enospc)
+        with pytest.raises(cfg.ConfigWriteError):
+            cfg.save_config({"latitude": 2.0, "city": "Replacement"})
+
+        # Original content fully intact — not truncated to 0 bytes.
+        raw = json.loads((tmp_path / "config.json").read_text())
+        assert raw["city"] == "Original"
+        assert raw["latitude"] == 1.0
+
+    def test_failed_write_leaves_no_temp_file(self, tmp_path, monkeypatch):
+        cfg.CONFIG_DIR = tmp_path
+        cfg.CONFIG_FILE = tmp_path / "config.json"
+
+        def enospc(*_args, **_kwargs):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(cfg.json, "dump", enospc)
+        with pytest.raises(cfg.ConfigWriteError):
+            cfg.save_config({"latitude": 2.0})
+        assert not (tmp_path / "config.json.tmp").exists()
+
+    def test_config_write_error_is_oserror(self):
+        # Existing ``except OSError`` handlers (e.g. in the scheduler) must still
+        # catch it, so the scheduler doesn't crash-loop on a save failure.
+        assert issubclass(cfg.ConfigWriteError, OSError)
 
 
 # ---------------------------------------------------------------------------
