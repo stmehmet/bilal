@@ -49,3 +49,6 @@ serviceAccountKey.json
 SESSION-NOTES.md
 *.session.md
 .scratch/
+
+# Design handoff bundle — kept local, never leaves this machine
+web/design_handoff_bilal_redesign/
