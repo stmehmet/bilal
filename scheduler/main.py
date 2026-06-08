@@ -31,8 +31,18 @@ def auto_setup() -> None:
     loc = detect_location()
     if loc:
         config.update(loc)
-        save_config(config)
-        logger.info("Auto-detected location: %s, %s", loc["city"], loc["country"])
+        try:
+            save_config(config)
+            logger.info("Auto-detected location: %s, %s", loc["city"], loc["country"])
+        except OSError as exc:
+            # A save failure (e.g. full disk) must NOT crash the scheduler — doing
+            # so just spins a restart loop that re-hits the geo provider until it
+            # rate-limits us.  Carry on; the location re-detects next boot and the
+            # web layer surfaces the underlying disk problem.
+            logger.error(
+                "Detected %s, %s but could not persist it: %s",
+                loc["city"], loc["country"], exc,
+            )
     else:
         logger.warning("Auto-detection failed; user must configure manually")
 

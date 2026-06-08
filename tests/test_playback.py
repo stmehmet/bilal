@@ -193,3 +193,104 @@ class TestPlayOnChromecastRetriesTimeout:
         ok = discovery.play_on_chromecast(dev, "http://x/a.mp3")
         assert ok is True
         assert len(calls) == 2
+
+
+class TestDisconnectAll:
+    """Disconnecting devices after use is what prevents the pychromecast
+    socket-worker reconnect storm that floods logs and fills the disk."""
+
+    def test_disconnects_every_device(self):
+        d1 = _make_device("A")
+        d2 = _make_device("B")
+        discovery.disconnect_all({"A": d1, "B": d2})
+        d1.disconnect.assert_called_once()
+        d2.disconnect.assert_called_once()
+
+    def test_swallows_disconnect_errors(self):
+        bad = _make_device("Bad")
+        bad.disconnect.side_effect = RuntimeError("boom")
+        discovery.disconnect_all({"Bad": bad})  # must not raise
+
+    def test_empty_map_is_noop(self):
+        discovery.disconnect_all({})  # must not raise
+
+
+class TestWakeSettle:
+    """Display/hub devices need a beat after connect to launch their media
+    receiver, or the first cast wakes them and immediately 'hangs up'."""
+
+    def _capture_sleeps(self, monkeypatch):
+        slept = []
+        monkeypatch.setattr(discovery.time, "sleep", lambda s: slept.append(s))
+        return slept
+
+    def test_display_device_gets_wake_settle(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Display")
+        dev.cast_info.cast_type = "cast"  # Nest Hub / Chromecast
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.DISPLAY_WAKE_SETTLE_SECONDS in slept
+        # And it happens BEFORE play_media, not after.
+        dev.media_controller.play_media.assert_called_once()
+
+    def test_audio_speaker_takes_no_settle_penalty(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Office speaker")
+        dev.cast_info.cast_type = "audio"  # Nest Mini — ready immediately
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert slept == []
+
+    def test_group_keeps_volume_stagger(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Upstairs")
+        dev.cast_info.cast_type = "group"
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.GROUP_VOLUME_STAGGER_SECONDS in slept
+
+    def test_unknown_type_defaults_to_settle(self, monkeypatch):
+        slept = self._capture_sleeps(monkeypatch)
+        dev = _make_device("Mystery")
+        dev.cast_info.cast_type = "something-new"
+        discovery._play_once(dev, "http://x/a.mp3", "audio/mpeg", 0.5)
+        assert discovery.DISPLAY_WAKE_SETTLE_SECONDS in slept
+
+
+class TestPlayOnSpeakersReleasesConnections:
+    """``_play_on_speakers`` must disconnect every device it opened — leaving
+    them connected is what let worker threads accumulate into the 53GB-log storm.
+    """
+
+    def _config(self):
+        return {
+            "volume": 0.5,
+            "timezone": "UTC",
+            "speakers": {"Office": {"enabled": True}},
+        }
+
+    def test_disconnects_after_successful_play(self, monkeypatch):
+        import adhan_scheduler as sch
+
+        dev = _make_device("Office")
+        monkeypatch.setattr(sch, "_filter_by_schedule", lambda enabled, *a, **k: enabled)
+        monkeypatch.setattr(sch, "_resolve_devices", lambda *a, **k: {"Office": dev})
+        monkeypatch.setattr(sch, "play_on_all", lambda *a, **k: {"Office": True})
+        monkeypatch.setattr(sch.heartbeat, "ping_success", lambda *a, **k: None)
+
+        sch._play_on_speakers("http://x/a.mp3", self._config(), "Test", "Dhuhr")
+        dev.disconnect.assert_called_once()
+
+    def test_disconnects_even_when_play_raises(self, monkeypatch):
+        import adhan_scheduler as sch
+
+        dev = _make_device("Office")
+        monkeypatch.setattr(sch, "_filter_by_schedule", lambda enabled, *a, **k: enabled)
+        monkeypatch.setattr(sch, "_resolve_devices", lambda *a, **k: {"Office": dev})
+
+        def boom(*_a, **_k):
+            raise RuntimeError("cast exploded")
+
+        monkeypatch.setattr(sch, "play_on_all", boom)
+
+        # Should swallow the error (logged) AND still disconnect in the finally.
+        sch._play_on_speakers("http://x/a.mp3", self._config(), "Test", "Dhuhr")
+        dev.disconnect.assert_called_once()

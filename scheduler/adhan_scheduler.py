@@ -28,6 +28,7 @@ from config import (
 )
 from discovery import (
     connect_speakers_direct,
+    disconnect_all,
     find_speakers_by_name,
     get_device_metadata,
     play_on_all,
@@ -265,6 +266,7 @@ def _get_prewarmed(prayer_name: str | None) -> dict:
         return {}
     if time.time() - entry["ts"] > PREWARM_TTL_SECONDS:
         logger.info("Pre-warm cache for %s is stale, discarding", prayer_name)
+        disconnect_all(entry.get("devices", {}))
         return {}
     return entry.get("devices", {})
 
@@ -273,7 +275,12 @@ def _store_prewarm(prayer_name: str | None, devices: dict) -> None:
     if not prayer_name:
         return
     with _prewarm_cache_lock:
+        previous = _prewarm_cache.get(prayer_name)
         _prewarm_cache[prayer_name] = {"devices": devices, "ts": time.time()}
+    # Release a prior unconsumed pre-warm for this prayer so its worker threads
+    # don't linger.  Done outside the lock — disconnect() can briefly block.
+    if previous:
+        disconnect_all(previous.get("devices", {}))
 
 
 def _persist_discovered_hosts(devices: dict, speakers_config: dict) -> bool:
@@ -425,11 +432,13 @@ def _resolve_devices(
         if len(present) == len(enabled):
             logger.info("Using pre-warmed connections for %d speaker(s)", len(present))
             return {n: devices[n] for n in present}
-        # Partial hit — keep what we have, look up the rest.
+        # Partial hit — keep what we have, look up the rest.  Release the
+        # pre-warmed devices we won't use so their worker threads don't linger.
         logger.info(
             "Pre-warm had %d/%d speakers; resolving the rest",
             len(present), len(enabled),
         )
+        disconnect_all({n: cc for n, cc in devices.items() if n not in present})
         devices = {n: devices[n] for n in present}
     else:
         devices = {}
@@ -475,6 +484,7 @@ def _play_on_speakers(
         if speakers[name].get("volume") is not None
     }
 
+    devices: dict = {}
     try:
         devices = _resolve_devices(speakers, enabled, prayer_name)
 
@@ -506,6 +516,12 @@ def _play_on_speakers(
             heartbeat.ping_success()
     except Exception as exc:
         logger.error("%s Chromecast playback error: %s", event_label, exc)
+    finally:
+        # Release every connection opened for this playback.  Holding them keeps
+        # pychromecast worker threads alive long after the adhan; when one later
+        # loses its (already-stopped) mDNS browser it spins in a reconnect loop
+        # that floods the logs — the storm that filled a Pi's disk to 100%.
+        disconnect_all(devices)
 
 
 def _do_trigger(
@@ -757,9 +773,13 @@ class AdhanSchedulerService:
                 logger.debug("Could not remove job %s: %s", jid, exc)
         self._job_ids.clear()
 
-        # Discard any pre-warmed devices left from yesterday.
+        # Discard any pre-warmed devices left from yesterday — disconnecting
+        # them first so their socket-worker threads don't outlive the cache.
         with _prewarm_cache_lock:
+            leftover = list(_prewarm_cache.values())
             _prewarm_cache.clear()
+        for entry in leftover:
+            disconnect_all(entry.get("devices", {}))
 
         config = load_config()
         if not config.get("setup_complete"):
