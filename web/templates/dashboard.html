@@ -16,6 +16,7 @@
   'calendar': '<rect x="3.6" y="5" width="16.8" height="15.4" rx="2.4"/><path d="M3.6 9.4h16.8M8 3.4v3.1M16 3.4v3.1"/><path d="M9 14.6l2 2 4-4"/>',
   'broadcast': '<circle cx="12" cy="12" r="2.1"/><path d="M8.7 8.7a4.7 4.7 0 0 0 0 6.6M15.3 8.7a4.7 4.7 0 0 1 0 6.6M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/>',
   'sliders': '<path d="M4 8h9M4 16h5"/><circle cx="16.5" cy="8" r="2.6"/><circle cx="12.5" cy="16" r="2.6"/>',
+  'home': '<path d="M3.6 11.3 12 4l8.4 7.3"/><path d="M5.6 9.8V19a1 1 0 0 0 1 1h3.1v-5.1h4.6V20h3.1a1 1 0 0 0 1-1V9.8"/>',
   'speaker': '<rect x="6" y="3.4" width="12" height="17.2" rx="2.5"/><circle cx="12" cy="14.4" r="3.1"/><circle cx="12" cy="7.4" r="1"/>',
   'mapPin': '<path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
   'wifi': '<path d="M2.6 9.2a14 14 0 0 1 18.8 0M5.8 12.6a9.4 9.4 0 0 1 12.4 0M9.2 16a4.4 4.4 0 0 1 5.6 0"/><circle cx="12" cy="19.1" r="1"/>',
@@ -34,7 +35,7 @@
 {%- macro icon(name, size=18, cls='') -%}
 <svg class="{{ cls }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">{{ ICON_PATHS.get(name, '')|safe }}</svg>
 {%- endmacro -%}
-{%- set TABS = [('today','Today','sun'),('schedule','Schedule','calendar'),('call','The Call','muezzin'),('speakers','Speakers','minaretWaves'),('settings','Settings','sliders')] -%}
+{%- set TABS = [('today','Today','home'),('schedule','Schedule','calendar'),('call','The Call','muezzin'),('speakers','Speakers','minaretWaves'),('settings','Settings','sliders')] -%}
 {%- set PMETA = {'Fajr':('فجر','cloudMoon'),'Dhuhr':('ظهر','sun'),'Asr':('عصر','cloudSun'),'Maghrib':('مغرب','sunset'),'Isha':('عشاء','moonStars')} -%}
 {%- set DAYS = [('M',0),('T',1),('W',2),('T',3),('F',4),('S',5),('S',6)] -%}
 {%- set has_location = config.latitude is not none -%}
@@ -74,12 +75,12 @@
     .bil .cmuted { color: var(--muted); }
 
     .bil .topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; flex-shrink: 0; position: relative; z-index: 2; }
-    .bil .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .bil .brand { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
     .bil .brand img { width: 38px; height: 38px; flex-shrink: 0; }
-    .bil .brand .wm { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
-    .bil .brand .name { font-size: 30px; line-height: .9; color: var(--brand); font-weight: 700; }
-    .bil .brand .loc { font-size: 11.5px; color: var(--muted); margin-top: 5px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bil .topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .bil .brand .wm { display: flex; flex-direction: column; line-height: 1; min-width: 0; overflow: hidden; }
+    .bil .brand .name { font-family: 'Aref Ruqaa', serif; font-size: 30px; line-height: .9; color: var(--brand); font-weight: 700; }
+    .bil .brand .loc { font-size: 11.5px; color: var(--muted); margin-top: 5px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .bil .topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 12px; }
     .bil .iconbtn { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; background: var(--chip); color: var(--muted); border: 1px solid var(--hair); font-size: 16px; transition: background .15s, color .15s; }
     .bil .iconbtn:hover { color: var(--brand); }
     /* mode-toggle: moon in light, sun in dark */
@@ -113,7 +114,7 @@
     .bil .panel-h > svg { color: var(--brand); }
     .bil .panel-h .sub { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: auto; }
 
-    .bil .prow { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 1fr auto; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--hair); }
+    .bil .prow { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 1fr 46px; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--hair); }
     .bil .prow:last-child { border-bottom: 0; }
     .bil .prow .pn { display: flex; align-items: center; gap: 11px; font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 16px; min-width: 0; overflow: hidden; }
     .bil .prow .pn svg { color: var(--muted); }
@@ -122,9 +123,11 @@
     .bil .prow .iqa { font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--brand); text-align: center; white-space: nowrap; }
     .bil .prow .ampm { font-size: 10px; opacity: .6; margin-left: 2px; }
     .bil .prow .on { display: flex; justify-content: flex-end; }
+    /* Sunrise has no iqamah/toggle — center its em-dashes so they don't skew to the column edge */
+    .bil .prow.sunrise .on { justify-content: center; }
     .bil .prow .colh { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
     .bil .prow.head { padding-bottom: 8px; border-bottom: 1px solid var(--hair); }
-    .bil .prow.now { background: var(--brand-soft); border-radius: 12px; border-bottom-color: transparent; padding-left: 12px; padding-right: 12px; margin: 2px 0; }
+    .bil .prow.now { background: var(--brand-soft); border-radius: 12px; border-bottom-color: transparent; margin: 2px 0; }
     .bil .prow.sunrise .pn { color: var(--gold); font-weight: 700; }
     .bil .prow.sunrise .pn svg { color: var(--gold); }
     .bil .prow.skipped { opacity: .42; }
@@ -543,17 +546,18 @@
       <div class="panel">
         <div class="panel-h">{{ icon('clock') }} Iqamah offsets
           <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-weight:600">
-            Play alert<span class="sw{% if not config.iqamah_enabled %} off{% endif %}" data-config-key="iqamah_enabled" role="switch"></span>
+            Play Iqamah alert<span class="sw{% if not config.iqamah_enabled %} off{% endif %}" data-config-key="iqamah_enabled" role="switch"></span>
           </label>
         </div>
         <p class="pane-sub" style="margin:-6px 0 14px">Minutes after the Adhan before the Iqamah is called.</p>
         <div class="field" style="margin-bottom:14px">
-          <label>Alert sound</label>
+          <label>Iqamah alert tone</label>
           <select class="sel" id="iqamah-audio">
-            {% for f in audio_files %}
+            {% for f in iqamah_files %}
             <option value="{{ f.filename }}"{% if f.filename == config.iqamah_audio_file %} selected{% endif %}>{{ f.label }}</option>
             {% endfor %}
           </select>
+          <span class="hint">Drop a matching <code>.mp3</code> into the <code>audio/</code> folder to use a tone.</span>
         </div>
         <div class="minigrid">
           {% for name in prayer_names %}
@@ -609,7 +613,7 @@
     <div class="tabpane hidden" data-tab="call">
       <div class="pane-head">
         <div class="pane-title">{{ icon('muezzin', 22) }} The Call</div>
-        <p class="pane-sub">Choose the muezzin's recitation for each prayer, and set the volume.</p>
+        <p class="pane-sub">Choose the muezzin's recitation for each prayer. Volume now lives in the <strong>Speakers</strong> tab.</p>
       </div>
 
       <div class="panel">
@@ -636,16 +640,7 @@
           <span>Fajr commonly uses a distinct recitation that includes <em>“aṣ-ṣalātu khayrun min an-nawm.”</em> Set it independently above.</span>
         </div>
         <audio id="preview-player" class="hidden"></audio>
-      </div>
-
-      <div class="panel">
-        <div class="panel-h">{{ icon('speaker') }} Default volume</div>
-        <p class="pane-sub" style="margin:-4px 0 14px">Applied to every speaker unless it has its own override.</p>
-        <div class="range">
-          <input type="range" min="0" max="100" id="volume" value="{{ (config.volume * 100)|int }}">
-          <span class="val" id="vol-label">{{ (config.volume * 100)|int }}%</span>
-        </div>
-        <button class="btn block" style="margin-top:18px" id="save-audio">{{ icon('muezzin', 15) }} Save audio</button>
+        <button class="btn block" style="margin-top:18px" id="save-recitations">{{ icon('muezzin', 15) }} Save recitations</button>
       </div>
     </div>
 
@@ -658,6 +653,18 @@
       <div style="display:flex;justify-content:flex-end;margin-top:-8px">
         <button class="btn ghost" id="discover-btn">{{ icon('broadcast', 15) }}<span class="discover-label">Discover speakers</span></button>
       </div>
+
+      {% if config.speakers %}
+      <div class="panel">
+        <div class="panel-h">{{ icon('speaker') }} Default volume<span class="sub">Used by speakers without a custom level</span></div>
+        <p class="pane-sub" style="margin:-4px 0 14px">Set the level every speaker falls back to — saved automatically. Override individual speakers below.</p>
+        <div class="range">
+          {{ icon('speaker', 15, 'cmuted') }}
+          <input type="range" min="0" max="100" id="volume" value="{{ (config.volume * 100)|int }}">
+          <span class="val" id="vol-label">{{ (config.volume * 100)|int }}%</span>
+        </div>
+      </div>
+      {% endif %}
 
       {% if config.speakers %}
       <div class="panel">
@@ -714,6 +721,8 @@
             {{ icon('speaker', 15, 'cmuted') }}
             <input type="range" min="0" max="100" class="spk-volume" data-speaker="{{ name }}" value="{{ ((sp_vol if sp_vol is not none else config.volume) * 100)|int }}">
             <span class="val">{{ ((sp_vol if sp_vol is not none else config.volume) * 100)|int }}%</span>
+            <span class="tagpill vf-custom{% if sp_vol is none %} hidden{% endif %}" data-speaker="{{ name }}">{{ icon('sliders', 12) }} Custom</span>
+            <span class="vf-default{% if sp_vol is not none %} hidden{% endif %}" data-speaker="{{ name }}" style="font-size:11px;font-weight:600;color:var(--muted)">Default</span>
             <button class="linkbtn spk-vol-reset{% if sp_vol is none %} hidden{% endif %}" data-speaker="{{ name }}" title="Reset to default volume" style="font-size:11.5px">reset</button>
           </div>
 
@@ -1030,14 +1039,37 @@
         player.classList.remove('hidden'); player.controls = true; player.play();
       });
     });
-    var vol = $('#volume');
-    if (vol) vol.addEventListener('input', function () { $('#vol-label').textContent = vol.value + '%'; });
-    var saveAudio = $('#save-audio');
-    if (saveAudio) saveAudio.addEventListener('click', function () {
+    var saveRecitations = $('#save-recitations');
+    if (saveRecitations) saveRecitations.addEventListener('click', function () {
       var files = {};
       $$('.adhan-audio').forEach(function (sel) { if (sel.value) files[sel.dataset.prayer] = sel.value; });
-      saveConfig({ adhan_audio_files: files, volume: parseInt(vol.value, 10) / 100 }, 'Audio settings saved');
+      saveConfig({ adhan_audio_files: files }, 'Recitations saved');
     });
+
+    /* ---------- Speakers: default volume (auto-saves) ---------- */
+    var vol = $('#volume'), volLabel = $('#vol-label');
+    if (vol) {
+      var volTimer;
+      vol.addEventListener('input', function () {
+        var pct = parseInt(vol.value, 10);
+        if (volLabel) volLabel.textContent = pct + '%';
+        GLOBAL_VOLUME = pct;
+        /* speakers without their own level follow the default — keep them in sync */
+        $$('.spk').forEach(function (card) {
+          var reset = card.querySelector('.spk-vol-reset');
+          if (reset && reset.classList.contains('hidden')) {
+            var slider = card.querySelector('.spk-volume');
+            if (slider) {
+              slider.value = pct;
+              var v = card.querySelector('.range .val');
+              if (v) v.textContent = pct + '%';
+            }
+          }
+        });
+        clearTimeout(volTimer);
+        volTimer = setTimeout(function () { saveConfig({ volume: pct / 100 }, 'Default volume saved'); }, 350);
+      });
+    }
 
     /* ---------- Settings: save / detect / geocode ---------- */
     var saveSettings = $('#save-settings');
@@ -1125,14 +1157,21 @@
         }).catch(function () { toast('Network error', true); });
       });
     });
+    /* flag a speaker's volume row as Custom (own level) or Default (follows the global) */
+    function setVolFlags(range, custom) {
+      if (!range) return;
+      var c = range.querySelector('.vf-custom'), d = range.querySelector('.vf-default'), r = range.querySelector('.spk-vol-reset');
+      if (c) c.classList.toggle('hidden', !custom);
+      if (d) d.classList.toggle('hidden', custom);
+      if (r) r.classList.toggle('hidden', !custom);
+    }
     $$('.spk-volume').forEach(function (slider) {
       var timer;
       slider.addEventListener('input', function () {
         var name = slider.dataset.speaker;
         var range = slider.closest('.range');
         range.querySelector('.val').textContent = slider.value + '%';
-        var reset = range.querySelector('.spk-vol-reset');
-        if (reset) reset.classList.toggle('hidden', parseInt(slider.value, 10) === GLOBAL_VOLUME);
+        setVolFlags(range, parseInt(slider.value, 10) !== GLOBAL_VOLUME);
         clearTimeout(timer);
         timer = setTimeout(function () {
           var body = {}; body[name] = { volume: parseInt(slider.value, 10) / 100 }; saveSpeakers(body);
@@ -1145,7 +1184,7 @@
         var range = btn.closest('.range');
         var slider = range ? range.querySelector('.spk-volume') : null;
         if (slider) { slider.value = GLOBAL_VOLUME; range.querySelector('.val').textContent = GLOBAL_VOLUME + '%'; }
-        btn.classList.add('hidden');
+        setVolFlags(range, false);
         var body = {}; body[name] = { volume: null }; saveSpeakers(body, 'Reset to default volume');
       });
     });
