@@ -1,3 +1,44 @@
+{#- ============================================================
+    Bilâl — Home Adhan System dashboard (redesign)
+    Two palettes (Sakina / Layl) × light + dark, persisted to
+    localStorage['bilal-prefs-v1']. Server-rendered Jinja; all
+    controls wire to the existing /api/* endpoints unchanged.
+    ============================================================ -#}
+{%- set ICON_PATHS = {
+  'sun': '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M4.7 4.7l1.7 1.7M17.6 17.6l1.7 1.7M2.6 12H5M19 12h2.4M4.7 19.3l1.7-1.7M17.6 6.4l1.7-1.7"/>',
+  'moon': '<path d="M20.5 14.2A8.2 8.2 0 0 1 9.8 3.5a8.2 8.2 0 1 0 10.7 10.7Z"/>',
+  'moonStars': '<path d="M19 13.4A7 7 0 0 1 10.6 5a7 7 0 1 0 8.4 8.4Z"/><path d="M16.6 3.2l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6.6-1.7Z"/>',
+  'cloudSun': '<circle cx="8.4" cy="8.2" r="2.8"/><path d="M8.4 2.6v1.4M3.5 8.2h1.3M4.7 4.5l1 1M12.1 4.5l-1 1M2.7 12.3l1-1"/><path d="M9 20h7.4a3 3 0 0 0 .3-5.98A4 4 0 0 0 9.3 13 3.2 3.2 0 0 0 9 20Z"/>',
+  'cloudMoon': '<path d="M7 20h8.4a3 3 0 0 0 .3-5.98A4.2 4.2 0 0 0 7.4 13 3.2 3.2 0 0 0 7 20Z"/><path d="M17.4 3.4a3 3 0 1 0 3 4.7 3.6 3.6 0 0 1-3-4.7Z"/>',
+  'sunrise': '<path d="M3 18.5h18"/><path d="M12 3.5v3.2M6 9 4.7 7.7M18 9l1.3-1.3M3.3 13.8H4.8M19.2 13.8h1.5"/><path d="M7.8 14a4.2 4.2 0 0 1 8.4 0"/>',
+  'sunset': '<path d="M3 18.5h18"/><path d="M7.8 14a4.2 4.2 0 0 1 8.4 0"/><path d="M12 6.7V3.5M6 9 4.7 7.7M18 9l1.3-1.3"/><path d="M9.4 4.6 12 7.1l2.6-2.5"/>',
+  'clock': '<circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.9"/>',
+  'calendar': '<rect x="3.6" y="5" width="16.8" height="15.4" rx="2.4"/><path d="M3.6 9.4h16.8M8 3.4v3.1M16 3.4v3.1"/><path d="M9 14.6l2 2 4-4"/>',
+  'broadcast': '<circle cx="12" cy="12" r="2.1"/><path d="M8.7 8.7a4.7 4.7 0 0 0 0 6.6M15.3 8.7a4.7 4.7 0 0 1 0 6.6M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/>',
+  'sliders': '<path d="M4 8h9M4 16h5"/><circle cx="16.5" cy="8" r="2.6"/><circle cx="12.5" cy="16" r="2.6"/>',
+  'speaker': '<rect x="6" y="3.4" width="12" height="17.2" rx="2.5"/><circle cx="12" cy="14.4" r="3.1"/><circle cx="12" cy="7.4" r="1"/>',
+  'mapPin': '<path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
+  'wifi': '<path d="M2.6 9.2a14 14 0 0 1 18.8 0M5.8 12.6a9.4 9.4 0 0 1 12.4 0M9.2 16a4.4 4.4 0 0 1 5.6 0"/><circle cx="12" cy="19.1" r="1"/>',
+  'signOut': '<path d="M14 7.6V5.5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2.1"/><path d="M9.5 12h10.5m0 0-3-3m3 3-3 3"/>',
+  'caretDown': '<path d="M6 9.5l6 6 6-6"/>',
+  'muezzin': '<circle cx="9" cy="6" r="2.6"/><path d="M4.8 20v-2.6a4.2 4.2 0 0 1 8.4 0V20"/><path d="M11.5 7.7c1.4.1 2.4 1 2.7 2.2"/><path d="M14.9 6.4a6 6 0 0 1 0 8M17.9 4.8a9.5 9.5 0 0 1 0 11.2"/>',
+  'minaretWaves': '<path d="M9 2.6c1.1.7 1.7 1.7 1.7 2.8H7.3C7.3 4.3 7.9 3.3 9 2.6Z"/><path d="M7.7 5.8h2.6v10.8H7.7z"/><path d="M7.1 9.4h3.8"/><path d="M7 16.6h3.4l.6 3.6H6.4z"/><path d="M13.9 8.6a5.5 5.5 0 0 1 0 6.8M16.5 6.8a8.8 8.8 0 0 1 0 10.4"/>',
+  'trash': '<path d="M4 7h16"/><path d="M9.5 7V5.2a1.8 1.8 0 0 1 1.8-1.8h1.4a1.8 1.8 0 0 1 1.8 1.8V7"/><path d="M6.5 7l1 12a2 2 0 0 0 2 1.9h5a2 2 0 0 0 2-1.9l1-12"/>',
+  'check': '<path d="M5 12.5l4.3 4.3L19 7.4"/>',
+  'warning': '<path d="M10.3 4 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0Z"/><path d="M12 9.4v4.2"/><path d="M12 17.3h0"/>',
+  'info': '<circle cx="12" cy="12" r="9.2"/><path d="M12 11.2v5"/><path d="M12 7.9h0"/>',
+  'crosshair': '<circle cx="12" cy="12" r="8.4"/><path d="M12 1.8v4M12 18.2v4M1.8 12h4M18.2 12h4"/>',
+  'fileText': '<path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5Z"/><path d="M14 3.5V8.5h5M8.5 13h7M8.5 16.5h7"/>',
+  'hardDrives': '<rect x="3" y="5" width="18" height="6" rx="1.6"/><rect x="3" y="13" width="18" height="6" rx="1.6"/><path d="M7 8h0M7 16h0"/><path d="M16.5 8h-2.5M16.5 16h-2.5"/>'
+} -%}
+{%- macro icon(name, size=18, cls='') -%}
+<svg class="{{ cls }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">{{ ICON_PATHS.get(name, '')|safe }}</svg>
+{%- endmacro -%}
+{%- set TABS = [('today','Today','sun'),('schedule','Schedule','calendar'),('call','The Call','muezzin'),('speakers','Speakers','minaretWaves'),('settings','Settings','sliders')] -%}
+{%- set PMETA = {'Fajr':('فجر','cloudMoon'),'Dhuhr':('ظهر','sun'),'Asr':('عصر','cloudSun'),'Maghrib':('مغرب','sunset'),'Isha':('عشاء','moonStars')} -%}
+{%- set DAYS = [('M',0),('T',1),('W',2),('T',3),('F',4),('S',5),('S',6)] -%}
+{%- set has_location = config.latitude is not none -%}
+{%- set enabled_count = config.speakers.values()|selectattr('enabled')|list|length -%}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,1323 +47,1267 @@
   <title>Bilâl – Dashboard</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='minaret-100.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='minaret-100.png') }}">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Newsreader:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
-    /* Keep phosphor icons visually aligned with their adjacent text */
-    .ph, [class^="ph-"], [class*=" ph-"] { display: inline-block; vertical-align: -0.125em; }
-    /* Arabic-calligraphic Latin font for the brand title */
-    .font-brand { font-family: 'Aref Ruqaa', serif; letter-spacing: 0.02em; }
+    /* ===== reset / base ===== */
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+    .hidden { display: none !important; }
+    .font-brand { font-family: 'Aref Ruqaa', serif; letter-spacing: .01em; }
+
+    /* ============================================================
+       BASE STRUCTURE — every theme inherits this skeleton.
+       ============================================================ */
+    .bil {
+      --gap: 18px; --radius: 18px;
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      font-family: var(--font-body, system-ui, sans-serif);
+      color: var(--ink); background: var(--bg); overflow: hidden;
+    }
+    .bil * { font-family: inherit; }
+    .bil svg { display: block; }
+    .bil .cmuted { color: var(--muted); }
+
+    .bil .topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; flex-shrink: 0; position: relative; z-index: 2; }
+    .bil .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .bil .brand img { width: 38px; height: 38px; flex-shrink: 0; }
+    .bil .brand .wm { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
+    .bil .brand .name { font-size: 30px; line-height: .9; color: var(--brand); font-weight: 700; }
+    .bil .brand .loc { font-size: 11.5px; color: var(--muted); margin-top: 5px; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bil .topbar-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .bil .iconbtn { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; background: var(--chip); color: var(--muted); border: 1px solid var(--hair); font-size: 16px; transition: background .15s, color .15s; }
+    .bil .iconbtn:hover { color: var(--brand); }
+    /* mode-toggle: moon in light, sun in dark */
+    .bil .i-dark { display: none; }
+    .bil.dark .i-light { display: none; }
+    .bil.dark .i-dark { display: block; }
+
+    .bil .tabs { display: flex; align-items: center; gap: 4px; padding: 0 24px; flex-shrink: 0; position: relative; z-index: 2; border-bottom: 1px solid var(--hair); }
+    .bil .tab { display: inline-flex; align-items: center; gap: 7px; padding: 11px 15px; font-size: 13.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 11px 11px 0 0; white-space: nowrap; position: relative; transition: color .15s; }
+    .bil .tab:hover { color: var(--ink); }
+    .bil .tab.active { color: var(--brand); }
+    .bil .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2.5px; border-radius: 3px; background: var(--brand); }
+
+    .bil .content { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: var(--gap); position: relative; z-index: 1; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; }
+    .bil .content::-webkit-scrollbar { width: 9px; }
+    .bil .content::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 9px; border: 2px solid transparent; background-clip: padding-box; }
+    .bil .content > * { flex-shrink: 0; }
+
+    .bil .hero { position: relative; overflow: hidden; border-radius: var(--radius); padding: 26px 28px; background: var(--hero-bg); border: 1px solid var(--hero-hair); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .bil .hero-left { display: flex; align-items: center; gap: 20px; min-width: 0; }
+    .bil .hero-glyph { width: 58px; height: 58px; border-radius: 16px; flex-shrink: 0; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand); }
+    .bil .hero-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: .16em; color: var(--muted); margin-bottom: 6px; }
+    .bil .hero-name { font-size: 30px; font-weight: 700; line-height: 1; color: var(--hero-ink); font-family: 'Aref Ruqaa', serif; letter-spacing: .015em; }
+    .bil .hero-sub { font-size: 12.5px; color: var(--muted); margin-top: 7px; }
+    .bil:not(.is-mobile) .hero-sub { white-space: nowrap; }
+    .bil .hero-right { text-align: right; flex-shrink: 0; }
+    .bil .hero-count { font-family: var(--font-num, var(--font-body)); font-weight: 700; font-size: 38px; line-height: 1; color: var(--brand); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
+    .bil .panel { border-radius: var(--radius); background: var(--card); border: 1px solid var(--hair); padding: 18px 20px; }
+    .bil .panel-h { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 14px; flex-wrap: wrap; row-gap: 6px; }
+    .bil .panel-h > svg { color: var(--brand); }
+    .bil .panel-h .sub { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: auto; }
+
+    .bil .prow { display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 1fr auto; align-items: center; gap: 10px; padding: 12px 4px; border-bottom: 1px solid var(--hair); }
+    .bil .prow:last-child { border-bottom: 0; }
+    .bil .prow .pn { display: flex; align-items: center; gap: 11px; font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 16px; min-width: 0; overflow: hidden; }
+    .bil .prow .pn svg { color: var(--muted); }
+    .bil .prow .pn .ar { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+    .bil .prow .adh { font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; text-align: center; white-space: nowrap; }
+    .bil .prow .iqa { font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--brand); text-align: center; white-space: nowrap; }
+    .bil .prow .ampm { font-size: 10px; opacity: .6; margin-left: 2px; }
+    .bil .prow .on { display: flex; justify-content: flex-end; }
+    .bil .prow .colh { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
+    .bil .prow.head { padding-bottom: 8px; border-bottom: 1px solid var(--hair); }
+    .bil .prow.now { background: var(--brand-soft); border-radius: 12px; border-bottom-color: transparent; padding-left: 12px; padding-right: 12px; margin: 2px 0; }
+    .bil .prow.sunrise .pn { color: var(--gold); font-weight: 700; }
+    .bil .prow.sunrise .pn svg { color: var(--gold); }
+    .bil .prow.skipped { opacity: .42; }
+    .bil .prow.skipped .adh { text-decoration: line-through; }
+    .bil .dash { color: var(--muted); font-size: 13px; }
+
+    .bil .sw { width: 40px; height: 23px; border-radius: 999px; position: relative; background: var(--brand); cursor: pointer; flex-shrink: 0; }
+    .bil .sw::after { content: ""; position: absolute; top: 2.5px; left: 19.5px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+    .bil .sw.off { background: var(--switch-off); }
+    .bil .sw.off::after { left: 2.5px; }
+
+    .bil .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--chip); color: var(--muted); border: 1px solid var(--hair); }
+    .bil .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 11px; font-size: 13px; font-weight: 600; background: var(--brand); color: var(--on-brand); border: 0; cursor: pointer; white-space: nowrap; }
+    .bil .btn:hover { filter: brightness(1.05); }
+    .bil .btn.ghost { background: var(--chip); color: var(--ink); border: 1px solid var(--hair); }
+    .bil .btn.ghost:hover { border-color: var(--brand); color: var(--brand); filter: none; }
+    .bil .btn.block { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
+    .bil .btn[disabled] { opacity: .55; cursor: default; filter: none; }
+    .bil .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--gap); }
+
+    .bil .botbar { display: none; }
+    .bil.is-mobile .tabs { display: none; }
+    .bil.is-mobile .botbar { display: flex; justify-content: space-around; align-items: center; flex-shrink: 0; padding: 9px 6px 11px; background: var(--card); border-top: 1px solid var(--hair); position: relative; z-index: 3; }
+    .bil.is-mobile .botbar .bt { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 9.5px; color: var(--muted); flex: 1; cursor: pointer; transition: color .15s; }
+    .bil.is-mobile .botbar .bt.active { color: var(--brand); }
+    .bil.is-mobile .content { padding: 16px 16px 18px; }
+    .bil.is-mobile .topbar { padding: 16px 18px 12px; }
+    .bil.is-mobile .hero { flex-direction: column; align-items: flex-start; gap: 16px; padding: 22px; }
+    .bil.is-mobile .hero-right { text-align: left; }
+    .bil.is-mobile .hero-count { font-size: 44px; }
+    .bil.is-mobile .row2 { grid-template-columns: minmax(0, 1fr); }
+    .bil.is-mobile .brand .name { font-size: 26px; }
+    .bil.is-mobile .prow { gap: 8px; }
+    .bil.is-mobile .prow .pn { font-size: 15px; gap: 8px; }
+    .bil.is-mobile .prow .pn .ar { display: none; }
+    .bil.is-mobile .call-row { grid-template-columns: 1fr auto !important; }
+    .bil.is-mobile .call-row .adhan-audio { grid-column: 1 / -1; order: 3; }
+    .bil.is-mobile .minigrid { grid-template-columns: repeat(2, 1fr); }
+    .bil.is-mobile .schedgrid { gap: 6px 4px; }
+    .bil.is-mobile .schedgrid .pl { font-size: 13px; gap: 5px; padding-right: 4px; }
+    .bil.is-mobile .daydot { width: 22px; height: 22px; }
+    .bil.is-mobile .spk-top { flex-wrap: wrap; row-gap: 12px; }
+    .bil.is-mobile .spk-id { flex: 1 1 100%; }
+    .bil.is-mobile .spk-actions { margin-left: auto; }
+
+    .bil .texture { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: var(--pattern); background-size: var(--pattern-size, 64px 64px); opacity: var(--pattern-opacity, .05); }
+
+    /* ===== panes / titles ===== */
+    .bil .pane-head { margin-bottom: 4px; }
+    .bil .pane-title { display: flex; align-items: center; gap: 10px; font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 22px; color: var(--ink); letter-spacing: .01em; }
+    .bil .pane-title svg { color: var(--brand); }
+    .bil .pane-sub { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+    .bil .tabpane { display: flex; flex-direction: column; gap: var(--gap); }
+    @media (prefers-reduced-motion: no-preference) { .bil .tabpane { animation: paneIn .28s ease both; } }
+    @keyframes paneIn { from { transform: translateY(7px); } to { transform: none; } }
+
+    /* ===== form controls ===== */
+    .bil .field { display: flex; flex-direction: column; gap: 6px; }
+    .bil .field > label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .01em; }
+    .bil .field .hint { font-size: 11.5px; color: var(--muted); }
+    .bil .inp, .bil .sel { width: 100%; font: inherit; font-size: 14px; color: var(--ink); background: var(--chip); border: 1px solid var(--hair); border-radius: 11px; padding: 10px 12px; outline: none; transition: border-color .15s, box-shadow .15s; }
+    .bil .inp:focus, .bil .sel:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+    .bil .sel { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; padding-right: 34px; cursor: pointer; }
+    .bil .inp::placeholder { color: var(--muted); opacity: .7; }
+
+    .bil .seg { display: inline-flex; background: var(--chip); border: 1px solid var(--hair); border-radius: 11px; padding: 3px; gap: 2px; }
+    .bil .seg button { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 8px; padding: 6px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: color .15s; }
+    .bil .seg button.on { background: var(--brand); color: var(--on-brand); }
+
+    .bil .range { display: flex; align-items: center; gap: 12px; }
+    .bil .range input[type=range] { flex: 1; accent-color: var(--brand); height: 4px; min-width: 0; }
+    .bil .range .val { font-size: 13px; font-weight: 600; color: var(--ink); width: 44px; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+    .bil .minigrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    .bil .minibox { background: var(--chip); border: 1px solid var(--hair); border-radius: 13px; padding: 12px 10px; text-align: center; }
+    .bil .minibox .ml { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin-bottom: 9px; }
+    .bil .stepper { display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .bil .stepper button { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--hair); background: var(--card); color: var(--ink); font-size: 16px; cursor: pointer; display: grid; place-items: center; line-height: 1; }
+    .bil .stepper button:hover { border-color: var(--brand); color: var(--brand); }
+    .bil .stepper .num { font-size: 18px; font-weight: 700; color: var(--ink); min-width: 26px; font-variant-numeric: tabular-nums; }
+    .bil .minibox .unit { font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+
+    .bil .spk { border: 1px solid var(--hair); border-radius: var(--radius); padding: 16px 18px; background: var(--card); }
+    .bil .spk + .spk { margin-top: 12px; }
+    .bil .spk-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .bil .spk-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .bil .spk-ic { width: 38px; height: 38px; border-radius: 11px; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; flex-shrink: 0; }
+    .bil .spk-name { font-weight: 700; font-size: 15px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .bil .spk-model { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    .bil .spk-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .bil .tagpill { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); flex-shrink: 0; }
+    .bil .iconghost { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--chip); border: 1px solid var(--hair); color: var(--muted); cursor: pointer; }
+    .bil .iconghost:hover { color: #d9534f; border-color: #d9534f; }
+    .bil .refind { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--muted); }
+    .bil .refind .sel { width: auto; flex: 1; min-width: 150px; padding: 6px 30px 6px 10px; font-size: 12.5px; }
+    .bil .warnflag { color: var(--gold); font-size: 11.5px; }
+
+    .bil .sched { margin-top: 14px; overflow-x: auto; }
+    .bil .sched-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+    .bil .schedgrid { display: grid; grid-template-columns: auto repeat(7, 1fr); gap: 7px 6px; align-items: center; }
+    .bil .schedgrid .dh { text-align: center; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+    .bil .schedgrid .pl { font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 15px; color: var(--ink); display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+    .bil .schedgrid .pl svg { color: var(--muted); }
+    .bil .daycell { display: grid; place-items: center; }
+    .bil .daydot { width: 26px; height: 26px; border-radius: 8px; cursor: pointer; border: 1px solid var(--hair); background: var(--chip); transition: all .12s; }
+    .bil .daydot.on { background: var(--brand); border-color: var(--brand); }
+    .bil .daydot:hover { border-color: var(--brand); }
+
+    .bil .themegrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .bil .swatch { border: 1.5px solid var(--hair); border-radius: 16px; padding: 14px; cursor: pointer; text-align: left; background: var(--card); transition: border-color .15s, transform .12s; position: relative; }
+    .bil .swatch:hover { transform: translateY(-2px); border-color: var(--brand); }
+    .bil .swatch.on { border-color: var(--brand); }
+    .bil .swatch.on::after { content: ""; position: absolute; top: 12px; right: 12px; width: 18px; height: 18px; border-radius: 50%; background: var(--brand); box-shadow: inset 0 0 0 3px var(--card), 0 0 0 1px var(--brand); }
+    .bil .swatch-bar { display: flex; gap: 6px; margin-bottom: 11px; }
+    .bil .swatch-bar span { width: 26px; height: 26px; border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+    .bil .swatch-name { font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 16px; color: var(--ink); }
+    .bil .swatch-desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+    .bil .formgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .bil.is-mobile .formgrid { grid-template-columns: 1fr; }
+    .bil .formgrid .span2 { grid-column: 1 / -1; }
+    .bil .pillrow { display: flex; gap: 8px; flex-wrap: wrap; }
+    .bil .linkbtn { background: none; border: 0; color: var(--brand); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; white-space: nowrap; }
+    .bil .note { display: flex; gap: 10px; align-items: flex-start; background: var(--chip); border: 1px solid var(--hair); border-radius: 13px; padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+    .bil .note > svg { color: var(--brand); flex-shrink: 0; margin-top: 1px; }
+    .bil .note.warn { border-color: var(--gold); }
+    .bil .note.warn > svg { color: var(--gold); }
+    .bil .note.err { border-color: #d9534f; }
+    .bil .note.err > svg { color: #d9534f; }
+    .bil .note code { font-family: ui-monospace, "Space Grotesk", monospace; background: var(--card); border: 1px solid var(--hair); border-radius: 5px; padding: 1px 6px; color: var(--ink); font-size: 11.5px; }
+
+    /* ===== toast ===== */
+    .bil .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--brand); color: var(--on-brand); font-weight: 600; font-size: 13.5px; padding: 11px 20px; border-radius: 12px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: all .3s; z-index: 80; display: flex; align-items: center; gap: 8px; }
+    .bil .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .bil .toast .i-err { display: none; }
+    .bil .toast.err { background: #c0473e; color: #fff; }
+    .bil .toast.err .i-ok { display: none; }
+    .bil .toast.err .i-err { display: block; }
+    .bil.is-mobile .toast { bottom: 86px; }
+
+    /* ===== log modal ===== */
+    .bil .modal { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.55); }
+    .bil .modal .sheet { background: var(--card); border: 1px solid var(--hair); border-radius: 16px; max-width: 640px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; color: var(--ink); box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
+    .bil .modal .sheet-h { display: flex; align-items: center; justify-content: space-between; padding: 15px 18px; border-bottom: 1px solid var(--hair); }
+    .bil .modal .sheet-h .t { font-family: 'Aref Ruqaa', serif; font-weight: 700; font-size: 17px; display: flex; align-items: center; gap: 9px; }
+    .bil .modal .sheet-h .t svg { color: var(--brand); }
+    .bil .modal .sheet-b { padding: 12px 18px; overflow-y: auto; }
+    .bil .modal .sheet-f { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-top: 1px solid var(--hair); font-size: 12px; color: var(--muted); }
+    .bil .logrow { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+    .bil .logrow:last-child { border-bottom: 0; }
+    .bil .logrow .when { color: var(--muted); font-size: 11.5px; }
+    .bil .logrow .ev { color: var(--ink); }
+    .bil .logrow .st { margin-left: auto; font-weight: 600; }
+    .bil .logrow .st.ok { color: var(--brand); }
+    .bil .logrow .st.fail { color: #d9534f; }
+    .bil .logrow .el { color: var(--muted); font-size: 11px; width: 58px; text-align: right; }
+    .bil .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .bil .dot.ok { background: var(--brand); }
+    .bil .dot.fail { background: #d9534f; }
+
+    /* ============================================================
+       PALETTE A — Sakina (warm, serene) — light + dark
+       ============================================================ */
+    .dir-sakina {
+      --font-body: "Plus Jakarta Sans", system-ui, sans-serif;
+      --font-num: "Newsreader", Georgia, serif;
+      --bg: #f3eee3; --ink: #2c352c; --muted: #8a8576;
+      --brand: #2f6b46; --brand-soft: #e3ebe0; --gold: #a9852f; --on-brand: #fdfbf4;
+      --card: #fbf8f0; --hair: #e4ddcc; --chip: #f0eadc; --switch-off: #d8d0bd;
+      --hero-bg: radial-gradient(120% 140% at 85% -10%, #356e49 0%, #244e35 55%, #1d3f2b 100%);
+      --hero-hair: #244e35; --hero-ink: #fbf8f0;
+      --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%232f6b46' stroke-width='1'%3E%3Cpath d='M18 0 L42 0 L60 18 L60 42 L42 60 L18 60 L0 42 L0 18 Z'/%3E%3Cpath d='M30 11 L41 19 L41 41 L30 49 L19 41 L19 19 Z'/%3E%3C/g%3E%3C/svg%3E");
+      --pattern-size: 60px 60px; --pattern-opacity: .05;
+    }
+    .dir-sakina .brand .name { color: #244e35; }
+    .dir-sakina .hero { box-shadow: 0 18px 40px -22px rgba(36,78,53,.6); }
+    .dir-sakina .hero-kicker, .dir-sakina .hero-sub { color: #b6d0bf; }
+    .dir-sakina .hero-glyph { background: rgba(251,248,240,.14); color: #e9c987; }
+    .dir-sakina .hero-count { color: #e9c987; }
+    .dir-sakina .panel { box-shadow: 0 2px 0 rgba(228,221,204,.5); }
+    .dir-sakina .prow.now { box-shadow: inset 0 0 0 1px #cde0d3; }
+
+    .dir-sakina.dark {
+      --bg: #1b1813; --ink: #ece5d6; --muted: #9b9385;
+      --brand: #66b487; --brand-soft: rgba(102,180,135,.14); --gold: #d7b46a; --on-brand: #14120c;
+      --card: #25221a; --hair: #38342a; --chip: #2c2820; --switch-off: #4a4537;
+      --hero-bg: radial-gradient(120% 140% at 85% -10%, #2f6b46 0%, #214733 55%, #18331f 100%);
+      --hero-ink: #fbf8f0;
+      --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='%23d7b46a' stroke-width='1'%3E%3Cpath d='M18 0 L42 0 L60 18 L60 42 L42 60 L18 60 L0 42 L0 18 Z'/%3E%3Cpath d='M30 11 L41 19 L41 41 L30 49 L19 41 L19 19 Z'/%3E%3C/g%3E%3C/svg%3E");
+      --pattern-opacity: .06;
+    }
+    .dir-sakina.dark { background: radial-gradient(140% 120% at 82% -18%, #221f16 0%, #1b1813 55%); }
+    .dir-sakina.dark .brand .name { color: #79c79a; }
+    .dir-sakina.dark .panel { box-shadow: none; }
+    .dir-sakina.dark .prow.now { box-shadow: inset 0 0 0 1px rgba(102,180,135,.4); }
+
+    /* ============================================================
+       PALETTE B — Layl (refined) — dark + light
+       ============================================================ */
+    .dir-layl {
+      --font-body: "Outfit", system-ui, sans-serif;
+      --font-num: "Space Grotesk", monospace;
+      --bg: #f1f4f2; --ink: #16201c; --muted: #748079;
+      --brand: #218a64; --brand-soft: #e0efe8; --gold: #b0863c; --on-brand: #ffffff;
+      --card: #ffffff; --hair: #e4eae6; --chip: #eaf0ec; --switch-off: #d6ddd8;
+      --hero-bg: linear-gradient(135deg, #1f5240 0%, #173f30 60%, #133327 100%);
+      --hero-hair: #143027; --hero-ink: #f1f6f3;
+      --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23218a64' stroke-width='1'%3E%3Cpath d='M16 16 H48 V48 H16 Z'/%3E%3Cpath d='M32 8 L56 32 L32 56 L8 32 Z'/%3E%3Ccircle cx='32' cy='32' r='7'/%3E%3C/g%3E%3C/svg%3E");
+      --pattern-size: 64px 64px; --pattern-opacity: .05;
+    }
+    .dir-layl .hero { box-shadow: 0 22px 55px -28px rgba(20,48,38,.55), inset 0 1px 0 rgba(255,255,255,.05); }
+    .dir-layl .hero-kicker, .dir-layl .hero-sub { color: #9fc4b4; }
+    .dir-layl .hero-glyph { background: rgba(255,255,255,.1); color: #6fe0b3; box-shadow: 0 0 34px -8px rgba(79,214,166,.6); }
+    .dir-layl .hero-count { color: #6fe0b3; letter-spacing: -.03em; }
+    .dir-layl .hero::after { content: ""; position: absolute; right: -60px; bottom: -90px; width: 260px; height: 260px; border-radius: 50%; background: radial-gradient(circle, rgba(79,214,166,.18), transparent 65%); }
+    .dir-layl .panel { box-shadow: 0 16px 44px -34px rgba(20,48,38,.5); }
+
+    .dir-layl.dark {
+      --bg: #14171a; --ink: #e7ece9; --muted: #8a948f;
+      --brand: #4cc59a; --brand-soft: rgba(76,197,154,.12); --gold: #d2a85a; --on-brand: #06140e;
+      --card: #1b1f23; --hair: #2a3038; --chip: #232930; --switch-off: #353d45;
+      --hero-bg: linear-gradient(135deg, #1d2c27 0%, #182022 60%, #15191c 100%);
+      --hero-hair: #2c4138; --hero-ink: #f1f6f3;
+      --pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%234cc59a' stroke-width='1'%3E%3Cpath d='M16 16 H48 V48 H16 Z'/%3E%3Cpath d='M32 8 L56 32 L32 56 L8 32 Z'/%3E%3Ccircle cx='32' cy='32' r='7'/%3E%3C/g%3E%3C/svg%3E");
+      --pattern-opacity: .055;
+    }
+    .dir-layl.dark { background: radial-gradient(140% 120% at 80% -20%, #1a2420 0%, #14171a 55%); }
+    .dir-layl.dark .hero { box-shadow: 0 24px 60px -30px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.04); }
+    .dir-layl.dark .hero-glyph { background: rgba(76,197,154,.14); color: #4cc59a; box-shadow: 0 0 36px -6px rgba(76,197,154,.5); }
+    .dir-layl.dark .hero-count { color: #4cc59a; }
+    .dir-layl.dark .panel { backdrop-filter: blur(8px); background: rgba(27,31,35,.7); box-shadow: none; }
+    .dir-layl.dark .iconbtn, .dir-layl.dark .chip { background: rgba(35,41,48,.7); }
   </style>
 </head>
-<body class="text-slate-200 p-4 md:p-8 overflow-x-hidden">
+<body>
+<div id="app" class="bil app dir-sakina">
+<script>
+  /* no-FOUC: apply saved palette/mode + mobile before paint */
+  (function () {
+    var p; try { p = JSON.parse(localStorage.getItem('bilal-prefs-v1')) || {}; } catch (e) { p = {}; }
+    var el = document.getElementById('app');
+    el.classList.remove('dir-sakina', 'dir-layl', 'dark');
+    el.classList.add('dir-' + (p.palette === 'layl' ? 'layl' : 'sakina'));
+    if (p.mode === 'dark') el.classList.add('dark');
+    if (window.innerWidth < 760) el.classList.add('is-mobile');
+  })();
+</script>
+  <div class="texture"></div>
 
-  <!-- Header -->
-  <header class="max-w-4xl mx-auto flex items-center justify-between mb-8">
-    <div class="flex items-center gap-3">
-      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAANY0lEQVR4nO2dB1QUVxfHnyxlabs7O8uyg9JFAQsaFcGCCggWRIpK0WAHATUag4oVgShq/D5iSRSNvXfBLhq7RqOiiWILFrAAIkUEC3K/8ybZPRbAzyjzRnd/5/wPZ98MMPf+z8x7897lgdAXgD5lnKClozWY9HVo+AcDSnTPyJReofysgSwORnKqzEghvUT6QjQghIRy6seAlJiXxgxdiBCSkr4edUeoJxMVxT/ZD21H9nqqracdTfqC1Bptkf6whkN6lCXBMYjN3gpCiXEuNon0dakr+joMXTzm3jbAhmC5Dg8s1RMbTid9YWqJnrlsNjMi8KXSDKyEsnSQWCpKBAJBR9LXp2400rFmnvcv2K0yQ6mYm+vBgBY/Qgg1J32R6oKhbj2TXDotCWa8ZYZSUacWgoFM/BAh1IT0xX7paOtZmF4QJA6tDC1Pr9IMpUb/uRKMGTpPIBB0In3RXyq6elaKE7rR/pVmBbtgeg1mKDXu9iaQWjOFeiJDzXD4EyPVs1ZkCkYHQZ3cHTDsxa/vNUOpuKK9YOXmVGwokyzFdxjpQL4EmuowdKHWjyMB5e6ANiV7/28zlJpecQRchweUGtDiEwghI9IBfbYIFdL+ujZmz9C+OawZ9Qp2QWLlh5nxunrO//aZgVR0VTPF8uFo6dtbLNP1aFGBrq1hzaAepcGEV0f+tRlKBa+Z/FJfKrqGEBKTDvJzQVtozZzSifKvRA+2s2aI8tMgpuLwR5uhlN9PY14Y0KIj2HjSwfIeobXZVp1o/0psBJZhfiqM+YRmKOUU7FEiFBvHkI6X32hrd9B1dniJ7m9jzdDJS4WoDxhRfYimPt6N3+gLEEIy0mHzFn0782to50zWDCzfsppf/j5WnROGPBeKDCaTjpuv0DpWiudKM4zy0+B7OFqrhuApewNadId04HzFTS+08yulIS2K99SqGUpJLEwfa0ZcVdNfOyZE1Zn7PD3AiSH23VzzEUJtSAfPO7S0tCLqxA9W9R993jN5+KnkEulfghDyJR0/HwkTxPZTGRJSfpATQ1oP61mEEOpBOng+4q8b5ad6ZAVUM8LCk4V4an3g7tnQ65fxELAoBrrPGQ7dZkSCz4xI8J07CgJSxkLfjfEweN8cGJu1kZ3Lqs6Qr772xkNfL9LB85HGwi7OL5WGdH16ACblpkLY9hngNT4MHN1agFRhAjYOduDexRMGDh0E0cOjYdKECTB96jRITprNKikuHqaMi4Xh0VEQGtYXnNu5gMKiLtSzt4G2A3pA8KrJMPH+dpUh5q0d8eqiLeng+YgeO5H413rQnhkJZq5OYNXAFvqF9YOUuQvgj1NnoSj7wb9WduZ12LxqLUSEh4OtYwNw7NASgldPAUMTCt8hmmn5KhBri42eGZszMCB8KBzdc+CjDHifDu/eByEhwSDUFz4XCoVhpIPnFbq6ur0piSQ3dkzM85zMG7VqxNvCd16Xzl4llERyGiFUF6k7YrE42alJ06KPfSQVfaRS5s6voCTUfVwrjNQViUQytaunV3Fe1l2iZhT9o/3b0iopieQBQsgUqSMmNJ3S0K5BYXrqrhoTVXA7B04eOMR27hPGxEBI7z7g4twabKysob6NLTjY24O1lRVYW1qBGcOAlYUl2Fpbg0fHTjAkbAAkxSfCqfRf32vI6YOHwd6uQamuru54pMa0oinqSs/uPsVXz2WoknN8XzrEfvsduHfoyCa+R7fuMGHsOFiWshhOHDoM97JuQ3lhMVSUllWpJ/kFcOnsOdixaQskxk2DTh06skb1CwqBvVtT3zHC28OzUEpRNwQCAX5rr4PUnDpCobC/lKLy+gQEPnVoaF/Z2cMDFs5bAFcyLlab9A8VNmn7xs3g3bkztHVxhTVLlmmMeA9GYpHoSV72vU9mQnU6mn4Q9PX1n2mMeA8URT16PXGP7j1gVVNyk3+YA77dfeDimd+rPSf3bg48uH33jTZKQuG3dA01IZPJ7hbl5rEJu3vjL7CztWWf/edOnq4y0QuSk6GHd1dYt2gpNHJwgOLc/HfOwY893MnbWtvAnes32bbnxU8Av/uQjpf3MApFxo0/r7BJmxGfAHFjY2HbijXQsX2HKvsE3OFfPvYb5FzMhBFDI2DxTz+/c55bu/bsz5g2bgJMj49n2wof5oJMJtOsFr6PumZm+08dPsomLbRPEKSt3sAmu21rF8j47ewbid66fiP0Dwphj2Olb96B37rfOCfz4iVo79qGPb577SYI7tWbbcejNLlcjuuzNNQEY2q6Im3LNjZpbVxc4Fz6ETaZM6fEQ8LUaW8ke8iAgbB83s8qQ7IzrrB3zIuSUtU5+I6YPnEKexz/rNYtW7Ht+C5UmJpeIB0v7xEbGycuXZTCJq15UyfIPHGGTeae9VvAr4fvG4Y0d3KCi4dPqAzBauPcGrIyr6nO6eUfALvXbWaPXT35OzRt1JhtxwMAMzOz46Tj/RwYNiMhsQInzalJE7h26hybzKyzF8HOtr4q0fguwJ3962Zgfd0nGA7s2q06D3f0N367wB7DX/Fn3I4fi2YKxT7SwX4OBI6MjH6Ck9ay+Vdw4eAxVbLr29ioEv3wTja0aNb8HUO+ix4JyxcvUZ2Hv0d5LOPX4+xdhdsP7tkLDMNsIR3s54BboL9/AU6aZyd3OJq6R5VQPHRVJvryhQzw7NjpHUMSYyfBnJmzVOfhPkV57MTOfdCxvRvbnrp5K5jKTZeTDvZzwKFhgwbFP8+dD82aOsE34ZEwc/I0VrRU+gq3Y8XGjIUmjo1eKo8pFewXCD5du7HnYMmktOrY6Igotg/B7eGDB4OhoWEaQkiHdMB8RUdLSyuUoqhr7m5u5XGxE6G2FT5g0DO5iTxbT0+vC+ng+YRILBaPFYtEub7duhefPnSE0zWQK2fOg0+XbgVSijqr1otTuNJDJpMto6XSwjEjvinPunSF6OLUjvUbK63MLQppisJ/iyhCakYzE5msKGXuglf5t/ixWliU/QDwyuWUcbHlkr9XDS2QGuHex8+/4O2EPLieBSsXLoFRUcPhm8joWtfkmPFVlhf59/DFpUEdkDoaguulFs9bAD26dMXLpxA9aCgsnP1fToRHXi2cmkE3L2/YvnYDFN69zxoS4NsTG6JW+6W4O9o7lHm5e0DD+nasCcrpjRwCSl21Hvy6+YCjvT3MTvgeT1DizdDUagcIcxlN33Fp2er5nQt/EjMi5y2dP3gU+vT0r0QIAULIFakZdcTG4jWjIiLLSRuR84/wXBdjalokEAh6IjXFkBJL7p/ctZ+4GTkXMyF+3MQKSkwtQOqMQCDwcGrUuOTuhctEzcBrKeZmdXFnbonUHVoqXTes/6CyqhKF10N2rFwHs6bEw4ghEdC7pz+7eujY0B4szS1Y4Wn4qtTQzg48O3SCgaH9YH7SDzUasjR5QaVMSu8lnQu+oENJJAeDevo/wesfqxYsgv5BoWzS8fpFb/9AiJs0GVYvWw5HDqSzq33KQoiaVProMfxx7jzs3Lod8Crks4IiKL73EPKu337DjNN7D4IJLcMVKDakE8EntIyNjROEQmFFv+AQdnq84P7DWqvLel5YAgW3sivmJ81+QUvpfIFA4E46AXxEZGVpya6FcCUjI6NivJRPOnC+Yupgb5/PpSFSqRR35BqqwbK5UzNODaFpdotyDdVg39bVNY9LQ0xMTLAhmtreamju6e7B6R1S9+93D8325NXg6uvj80axdW3L1sYGD3cp0oHzFffQPkGPuTSkkaMj3uvEjHTgfKX74AEDirg0pFWLlnmajQOqJ3Bk9HC2SI4rubVrh++QxqQD5yv9xseMLefSkK5e3tiQVqQD5ytDE6fGveDSkEA/fzzKciMdOC/R0tIa+Z9Zsyu5NCSsb1/8HuJNOnZeIhQKJ+AyTy4NiQyPwHNZartCWCMSsTjp9cp1LhQzanQpQiiYdOy8REbT8zasXsOpIXGTJj9DCA0kHTsvUcjly/DOC1waMmv6jFcIoSjSsfMSRsFs2L9zF6eGzE/+EbS1tTVbjlcFwzA7j6Uf4tSQXxYuAmND4wTSsfMSM4Y5dPb4SU4NWbtiJdAUlUw6dl7CMMwpXJTApSHbNmwCuYnJEtKx8xKFQpFx83Imp4bsTU0DhUKxlnTsvMRULr+a89ctTg3BZUUMw+wgHTsvMZHJbtVm6U9VOnPsBDbkAOnYeYmUou6XPS7i1JBLv58DRsHg/96m4W0oiYTT9fTX9jw5Tzp2XiJ9a/MyLpR9MwtM5fJM0rHzEqlUyul6OhberU4mk90iHTsvkdF0IdeGPC0oBNx3kY6dj9SRm5hwbggW7rtIB89H9M3r1i0gYgil2QyzKqS2Nracd+pYuO8iHTwfMWvcqBHnw14sGS3TGFIFts4tW3FaaK2UXC7HhQ6a/4v7Fo1x0RoJQyzMzXEpkAHpBPCNlrhojYQhdvXr41EWTToBfKM9LlojYUjTJk1wfW890gngG179QkOJvIe4ODtjQ+xIJ4Bv+A4bGl5MwpBObm74kdWUdAL4RtB3o0aXkjCke5eu2JDWpBPAN/yiwiMOv3xStohreXt64R2uW5BOAP79/wNVrier6DoG/gAAAABJRU5ErkJggg=="
-           alt="Minaret" width="48" height="48"
-           class="w-12 h-12 flex-shrink-0">
-      <div>
-        <h1 class="font-brand text-4xl font-bold text-emerald-400 leading-none">Bilâl</h1>
-        <p class="text-slate-400 text-sm">
-          {{ config.city }}, {{ config.country }}
-          <span class="text-slate-500 ml-2">{{ config.timezone }}</span>
-        </p>
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='minaret-100.png') }}" alt="Bilâl minaret">
+      <div class="wm">
+        <span class="font-brand name">Bilâl</span>
+        <span class="loc">
+          {%- if has_location -%}
+            {{ config.city }}, {{ config.country }} · {{ config.timezone }}
+          {%- else -%}
+            Location not set — open Settings
+          {%- endif -%}
+        </span>
       </div>
     </div>
-    <a href="/logout" class="text-slate-400 hover:text-white text-sm inline-flex items-center gap-1.5">
-      <i class="ph ph-sign-out"></i> Logout
-    </a>
-  </header>
-
-  <main class="max-w-4xl mx-auto space-y-6">
-
-    <!-- Audio Warning Banner (populated by JS) -->
-    <div id="audio-warning" class="hidden bg-amber-900/60 border border-amber-700 rounded-2xl shadow-lg p-4">
-      <div class="flex items-start gap-3">
-        <i class="ph ph-warning-circle text-amber-400 text-2xl mt-0.5"></i>
-        <div>
-          <h3 class="text-amber-300 font-medium text-sm">Missing Audio Files</h3>
-          <p id="audio-warning-text" class="text-amber-200/80 text-sm mt-1"></p>
-        </div>
-      </div>
+    <div class="topbar-actions">
+      <div class="iconbtn" id="mode-toggle" role="button" title="Toggle light / dark">{{ icon('moon', 16, 'i-light') }}{{ icon('sun', 16, 'i-dark') }}</div>
+      <a class="iconbtn" href="/logout" role="button" title="Log out">{{ icon('signOut', 16) }}</a>
     </div>
-
-    <!-- Disk Space Warning Banner (populated by JS) -->
-    <div id="disk-warning" class="hidden bg-red-900/60 border border-red-700 rounded-2xl shadow-lg p-4">
-      <div class="flex items-start gap-3">
-        <i class="ph ph-hard-drives text-red-400 text-2xl mt-0.5"></i>
-        <div>
-          <h3 class="text-red-300 font-medium text-sm">Low Disk Space</h3>
-          <p id="disk-warning-text" class="text-red-200/80 text-sm mt-1"></p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Next Prayer Countdown -->
-    {% if next_prayer %}
-    <section class="bg-gradient-to-r from-emerald-900/60 to-slate-800 rounded-2xl shadow-lg p-6 flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <i class="ph {{ prayer_icons.get(next_prayer.name, 'ph-moon-stars') }} text-emerald-400 text-4xl"></i>
-        <div>
-          <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Next Prayer</div>
-          <div class="text-2xl font-bold text-white">{{ next_prayer.name }}</div>
-        </div>
-      </div>
-      <div class="text-right">
-        <div class="text-slate-400 text-xs uppercase tracking-wider mb-1">Starts in</div>
-        <div id="countdown" class="text-3xl font-mono font-bold text-emerald-400">--:--:--</div>
-      </div>
-    </section>
-    {% endif %}
-
-    <!-- Prayer Times + Iqamah -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
-        <i class="ph ph-clock-countdown"></i> Today's Prayer Times
-      </h2>
-      {% if prayer_times %}
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-              <th class="text-left pb-2">Prayer</th>
-              <th class="text-center pb-2">Adhan</th>
-              <th class="text-center pb-2">Iqamah</th>
-              <th class="text-center pb-2">Enabled</th>
-            </tr>
-          </thead>
-          <tbody>
-            {# Sunrise row (display only, not a prayer) #}
-            {% if prayer_times.get('Sunrise') %}
-            <tr class="border-b border-slate-700/50">
-              <td class="py-3 font-medium text-amber-400">
-                <i class="ph ph-sun-horizon mr-1"></i> Sunrise
-              </td>
-              <td class="text-center text-amber-300 font-mono">{{ prayer_times.Sunrise }}</td>
-              <td class="text-center text-slate-600">—</td>
-              <td class="text-center text-slate-600">—</td>
-            </tr>
-            {% endif %}
-            {# Five prayers #}
-            {% for name in prayer_names %}
-            {% set skipped = name in config.skip_prayers %}
-            <tr class="border-b border-slate-700/50 {% if skipped %}opacity-40{% endif %}">
-              <td class="py-3 font-medium">
-                <i class="ph {{ prayer_icons.get(name, '') }} mr-1 text-slate-400"></i>{{ name }}
-              </td>
-              <td class="text-center font-mono {% if skipped %}line-through{% endif %}">
-                {{ prayer_times.get(name, '--:--') }}
-              </td>
-              <td class="text-center font-mono text-emerald-300">
-                {{ iqamah_times.get(name, '--:--') }}
-              </td>
-              <td class="text-center">
-                <input type="checkbox" class="prayer-toggle accent-emerald-500 w-4 h-4"
-                       data-prayer="{{ name }}"
-                       {% if name not in config.skip_prayers %}checked{% endif %}>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="text-slate-400">Location not configured. Use the settings below to set up.</p>
-      {% endif %}
-    </section>
-
-    <!-- Settings -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <h2 class="text-xl font-semibold text-emerald-400 mb-4 flex items-center gap-2">
-        <i class="ph ph-sliders-horizontal"></i> Settings
-      </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-        <!-- Location -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Location</label>
-
-          <!-- Coordinates (source of truth for prayer calculation) -->
-          <div class="flex gap-2 min-w-0">
-            <input id="lat" type="number" step="any" placeholder="Latitude"
-                   value="{{ config.latitude or '' }}"
-                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            <input id="lon" type="number" step="any" placeholder="Longitude"
-                   value="{{ config.longitude or '' }}"
-                   class="flex-1 min-w-0 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          </div>
-
-          <!-- City + country + timezone (sent to backend on save so manual
-               coordinate edits don't leave stale display values) -->
-          <div class="grid grid-cols-2 gap-2 mt-2">
-            <input id="city" type="text" placeholder="City"
-                   value="{{ config.city if config.city and config.city != 'Unknown' else '' }}"
-                   class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            <input id="country" type="text" placeholder="Country"
-                   value="{{ config.country if config.country and config.country != 'Unknown' else '' }}"
-                   class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                          text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          </div>
-          <input id="timezone" type="text" placeholder="Timezone (e.g. America/Chicago)"
-                 value="{{ config.timezone if config.timezone and config.timezone != 'UTC' else '' }}"
-                 class="mt-2 w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-
-          <!-- Primary action: IP-based auto-detect -->
-          <button type="button" onclick="detectLocation()" id="detect-btn"
-                  class="mt-2 text-sm text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1.5">
-            <i class="ph ph-crosshair-simple"></i> Auto-detect from IP
-          </button>
-
-          <!-- Fallback: address lookup when IP detection is wrong
-               (VPN, Tailscale exit node, or ISP geolocating to another city) -->
-          <details class="mt-3">
-            <summary class="text-sm text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
-              <i class="ph ph-magnifying-glass"></i>
-              Wrong location? Look up by address
-            </summary>
-            <div class="mt-2">
-              <div class="flex gap-2">
-                <input id="address" type="text" placeholder="e.g. Austin, TX or 123 Main St, Dallas"
-                       class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                              text-white outline-none focus:ring-2 focus:ring-emerald-500"
-                       onkeydown="if(event.key==='Enter'){event.preventDefault();geocodeAddress();}">
-                <button type="button" onclick="geocodeAddress()" id="geocode-btn"
-                        class="bg-slate-600 hover:bg-slate-500 text-white text-sm px-4 py-2 rounded-lg
-                               transition-colors whitespace-nowrap inline-flex items-center gap-1.5
-                               disabled:opacity-50 disabled:cursor-not-allowed">
-                  Look Up
-                </button>
-              </div>
-              <p id="geocode-status" class="text-xs text-slate-500 mt-1"></p>
-            </div>
-          </details>
-        </div>
-
-        <!-- Calculation Method -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Calculation Method</label>
-          <select id="calc-method"
-                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            {% for m in methods %}
-            <option value="{{ m }}" {% if m == config.calculation_method %}selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Per-prayer Adhan Audio (spans both columns) -->
-        <div class="md:col-span-2">
-          <label class="block text-slate-400 text-sm mb-2">Adhan Audio (per prayer)</label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {% for name in prayer_names %}
-            <div class="bg-slate-700/50 rounded-xl p-3">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs uppercase tracking-wider text-slate-400">{{ name }}</span>
-                <button type="button" onclick="previewAdhan('{{ name }}')"
-                        class="text-xs text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1">
-                  <i class="ph ph-play-circle"></i> Preview
-                </button>
-              </div>
-              <select id="adhan-file-{{ name }}" data-prayer="{{ name }}"
-                      class="adhan-audio-select w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                             text-white outline-none focus:ring-2 focus:ring-emerald-500">
-                {% if audio_files_by_prayer[name] %}
-                  {% for f in audio_files_by_prayer[name] %}
-                  <option value="{{ f.filename }}" {% if f.filename == config.adhan_audio_files.get(name) %}selected{% endif %}>{{ f.label }}</option>
-                  {% endfor %}
-                {% else %}
-                  <option value="" disabled selected>(No audio files for {{ name }})</option>
-                {% endif %}
-              </select>
-            </div>
-            {% endfor %}
-          </div>
-          <audio id="preview-player" class="hidden"></audio>
-        </div>
-
-        <!-- Volume -->
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Volume:
-            <span id="vol-label">{{ (config.volume * 100)|int }}%</span>
-          </label>
-          <input id="volume" type="range" min="0" max="100" value="{{ (config.volume * 100)|int }}"
-                 oninput="document.getElementById('vol-label').textContent = this.value + '%'"
-                 class="w-full accent-emerald-500">
-        </div>
-
-      </div>
-
-      <button onclick="saveSettings()"
-              class="mt-6 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
-        <i class="ph ph-floppy-disk"></i> Save Settings
-      </button>
-    </section>
-
-    <!-- Iqamah Offsets -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
-            <i class="ph ph-plus-minus"></i> Iqamah Offsets
-          </h2>
-          <p class="text-slate-400 text-sm mt-1">Minutes after Adhan before Iqamah is called.</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-4 mb-4 bg-slate-700/50 rounded-xl p-3">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="iqamah-enabled"
-                 {{ 'checked' if config.iqamah_enabled else '' }}
-                 class="w-4 h-4 accent-emerald-500">
-          <span class="text-sm text-white">Play audio alert at Iqamah time</span>
-        </label>
-        <select id="iqamah-audio-file"
-                class="ml-auto bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-sm
-                       text-white outline-none focus:ring-2 focus:ring-emerald-500">
-          {% for f in audio_files %}
-          <option value="{{ f.filename }}" {{ 'selected' if f.filename == config.iqamah_audio_file else '' }}>{{ f.label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {% for name in prayer_names %}
-        <div class="bg-slate-700/50 rounded-xl p-3 text-center">
-          <label class="block text-slate-400 text-xs uppercase tracking-wider mb-2">{{ name }}</label>
-          <input type="number" min="0" max="60"
-                 id="iqamah-{{ name }}"
-                 value="{{ config.iqamah_offsets.get(name, 15) }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5
-                        text-center text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500">
-          <span class="text-slate-500 text-xs mt-1 block">min</span>
-        </div>
-        {% endfor %}
-      </div>
-      <button onclick="saveIqamah()"
-              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
-        <i class="ph ph-floppy-disk"></i> Save Iqamah Offsets
-      </button>
-    </section>
-
-    <!-- Friday Sela -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
-            <i class="ph ph-star-four"></i> Friday Sela
-          </h2>
-          <p class="text-slate-400 text-sm mt-1">Plays before Jummah (Friday Dhuhr) only.</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="friday-sela-enabled" class="sr-only peer"
-                 {% if config.friday_sela_enabled %}checked{% endif %}>
-          <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer
-                      peer-checked:after:translate-x-full peer-checked:after:border-white
-                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
-                      peer-checked:bg-emerald-600"></div>
-        </label>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Audio</label>
-          <select id="friday-sela-audio-file"
-                  class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                         text-white outline-none focus:ring-2 focus:ring-emerald-500">
-            {% for f in sela_files %}
-            <option value="{{ f.filename }}" {{ 'selected' if f.filename == config.friday_sela_audio_file else '' }}>
-              {{ f.label }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-400 text-sm mb-1">Minutes before Dhuhr</label>
-          <input type="number" min="1" max="120"
-                 id="friday-sela-offset"
-                 value="{{ config.friday_sela_offset }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white text-center outline-none focus:ring-2 focus:ring-emerald-500">
-        </div>
-      </div>
-      <button onclick="saveFridaySela()"
-              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
-        <i class="ph ph-floppy-disk"></i> Save Friday Sela
-      </button>
-    </section>
-
-    <!-- Do Not Disturb -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
-            <i class="ph ph-moon"></i> Do Not Disturb
-          </h2>
-          <p class="text-slate-400 text-sm mt-1">Mute the Adhan during sleep hours.</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" id="dnd-enabled" class="sr-only peer"
-                 {% if config.dnd_enabled %}checked{% endif %}>
-          <div class="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer
-                      peer-checked:after:translate-x-full peer-checked:after:border-white
-                      after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                      after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all
-                      peer-checked:bg-emerald-600"></div>
-        </label>
-      </div>
-      <div class="flex gap-4">
-        <div class="flex-1">
-          <label class="block text-slate-400 text-sm mb-1">Quiet from</label>
-          <input type="time" id="dnd-start" value="{{ config.dnd_start }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-        </div>
-        <div class="flex-1">
-          <label class="block text-slate-400 text-sm mb-1">Quiet until</label>
-          <input type="time" id="dnd-end" value="{{ config.dnd_end }}"
-                 class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm
-                        text-white outline-none focus:ring-2 focus:ring-emerald-500">
-        </div>
-      </div>
-      <button onclick="saveDND()"
-              class="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5
-                     rounded-lg transition-colors inline-flex items-center justify-center gap-2">
-        <i class="ph ph-floppy-disk"></i> Save DND Schedule
-      </button>
-    </section>
-
-    <!-- Speakers -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2">
-          <i class="ph ph-speaker-high"></i> Speakers
-        </h2>
-        <button onclick="discoverSpeakers()" id="discover-btn"
-                class="bg-slate-700 hover:bg-slate-600 text-sm px-4 py-2 rounded-lg transition-colors
-                       inline-flex items-center gap-1.5">
-          <i class="ph ph-magnifying-glass"></i> Discover Speakers
-        </button>
-      </div>
-      {# --- Global schedule template (apply to all) --- #}
-      {% if config.speakers %}
-      <details class="mb-4">
-        <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
-          <i class="ph ph-calendar-check"></i> Set schedule for all speakers
-        </summary>
-        <div class="mt-3 bg-slate-700/30 rounded-lg p-4">
-          <div class="flex items-center gap-1 mb-3" role="tablist">
-            <button type="button" data-global-tab="adhan"
-                    class="global-tab-btn px-3 py-1 text-xs rounded-md bg-emerald-600 text-white">
-              Adhan
-            </button>
-            <button type="button" data-global-tab="iqamah"
-                    class="global-tab-btn px-3 py-1 text-xs rounded-md bg-slate-600 text-slate-300">
-              Iqamah
-            </button>
-          </div>
-          <div class="grid grid-cols-5 gap-2 text-center mb-3" id="global-schedule">
-            {% for prayer in prayer_names %}
-            <div>
-              <div class="text-xs text-slate-400 mb-1">{{ prayer }}</div>
-              <input type="checkbox" class="global-prayer-toggle accent-emerald-500 w-4 h-4"
-                     data-prayer="{{ prayer }}" checked>
-              <div class="day-picker mt-2 hidden" data-prayer="{{ prayer }}">
-                {% for day_idx, day_label in [(0,'M'),(1,'T'),(2,'W'),(3,'T'),(4,'F'),(5,'S'),(6,'S')] %}
-                <button type="button"
-                        class="global-day-btn w-6 h-6 text-[10px] rounded-full bg-emerald-600 text-white m-0.5"
-                        data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
-                {% endfor %}
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          <div class="flex gap-2">
-            <button onclick="toggleGlobalDayPickers()"
-                    class="text-xs text-slate-400 hover:text-slate-300 underline">
-              Customize days
-            </button>
-            <button onclick="applyScheduleToAll()"
-                    class="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white text-sm px-4 py-1.5
-                           rounded-lg transition-colors inline-flex items-center gap-1">
-              <i class="ph ph-broadcast"></i> Apply to All (<span id="global-tab-label">Adhan</span>)
-            </button>
-          </div>
-        </div>
-      </details>
-      {% endif %}
-
-      <div id="speakers-list">
-        {% if config.speakers %}
-        {% for name, info in config.speakers.items() %}
-        <div class="bg-slate-700/50 rounded-lg px-4 py-3 mb-2">
-          <div class="flex items-center justify-between">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" class="speaker-toggle accent-emerald-500 w-4 h-4"
-                     data-speaker="{{ name }}"
-                     {% if info.enabled %}checked{% endif %}>
-              <div>
-                <span class="font-medium">{{ name }}</span>
-                {% if info.get('is_group') %}
-                <span class="ml-2 text-xs bg-purple-800/60 text-purple-300 px-2 py-0.5 rounded-full">Group</span>
-                {% endif %}
-                {% if info.get('model') %}
-                <span class="block text-xs text-slate-500">{{ info.model }}</span>
-                {% endif %}
-              </div>
-            </label>
-            <div class="flex items-center gap-2">
-              <button onclick="testSpeaker('{{ name }}')"
-                      class="text-sm bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-400
-                             px-3 py-1 rounded-lg transition-colors inline-flex items-center gap-1">
-                <i class="ph ph-play"></i> Test
-              </button>
-              <button onclick="removeSpeaker('{{ name }}')"
-                      class="text-sm bg-red-600/20 hover:bg-red-600/40 text-red-400
-                             px-2 py-1 rounded-lg transition-colors inline-flex items-center gap-1"
-                      title="Remove speaker">
-                <i class="ph ph-trash"></i>
-              </button>
-            </div>
-          </div>
-          {# Per-speaker volume override #}
-          {% set speaker_vol = info.get('volume') %}
-          <div class="mt-2 flex items-center gap-2 min-w-0">
-            <i class="ph ph-speaker-high text-slate-500 text-xs flex-shrink-0"></i>
-            <input type="range" min="0" max="100"
-                   value="{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}"
-                   class="flex-1 min-w-0 accent-emerald-500 h-1.5 speaker-volume"
-                   data-speaker="{{ name }}"
-                   oninput="this.nextElementSibling.textContent = this.value + '%'">
-            <span class="text-xs text-slate-400 w-8">{{ ((speaker_vol if speaker_vol is not none else config.volume) * 100)|int }}%</span>
-            <button onclick="resetSpeakerVolume('{{ name }}')"
-                    class="text-[10px] text-slate-500 hover:text-slate-300 {% if speaker_vol is none %}hidden{% endif %}"
-                    data-speaker="{{ name }}" data-reset-btn
-                    title="Reset to global volume ({{ (config.volume * 100)|int }}%)">
-              <i class="ph ph-arrow-counter-clockwise"></i>
-            </button>
-          </div>
-          {# Per-speaker re-find identity — how the scheduler relocates this
-             speaker when its IP changes on a later run. #}
-          {% set match_by = info.get('match_by', 'device') %}
-          <div class="mt-2 flex items-center gap-2 text-xs flex-wrap">
-            <i class="ph ph-crosshair text-slate-500 flex-shrink-0"
-               title="How the scheduler re-finds this speaker if its IP changes"></i>
-            <span class="text-slate-500">Re-find by:</span>
-            <select class="speaker-match-by bg-slate-800 text-slate-200 rounded px-2 py-0.5 border border-slate-600"
-                    data-speaker="{{ name }}">
-              <option value="device" {% if match_by != 'name' %}selected{% endif %}>This exact device</option>
-              <option value="name" {% if match_by == 'name' %}selected{% endif %}>Any device named “{{ name }}”</option>
-            </select>
-            {% if match_by != 'name' and not info.get('uuid') %}
-            <span class="text-amber-500/80"
-                  title="No device ID stored yet — run Discover so this speaker can be matched by its exact device. Falls back to name matching until then.">⚠ no ID yet</span>
-            {% endif %}
-          </div>
-          {# Per-speaker prayer schedule — Adhan + Iqamah in a tabbed view #}
-          <details class="mt-2">
-            <summary class="text-xs text-slate-400 cursor-pointer hover:text-slate-300 inline-flex items-center gap-1">
-              <i class="ph ph-calendar-check"></i> Prayer schedule
-            </summary>
-            <div class="mt-2 flex items-center gap-1" data-speaker-tabs="{{ name }}" role="tablist">
-              <button type="button" data-speaker="{{ name }}" data-kind="adhan"
-                      class="speaker-tab-btn px-3 py-1 text-xs rounded-md bg-emerald-600 text-white">
-                Adhan
-              </button>
-              <button type="button" data-speaker="{{ name }}" data-kind="iqamah"
-                      class="speaker-tab-btn px-3 py-1 text-xs rounded-md bg-slate-600 text-slate-300">
-                Iqamah
-              </button>
-              <button type="button" onclick="viewSpeakerLogs('{{ name }}')"
-                      class="ml-auto px-3 py-1 text-xs rounded-md bg-slate-600 hover:bg-slate-500 text-slate-200 inline-flex items-center gap-1"
-                      title="Recent playback attempts on this speaker">
-                <i class="ph ph-file-text"></i> Logs
-              </button>
-            </div>
-            {% for kind in ['adhan', 'iqamah'] %}
-            {% set schedule_key = 'schedule' if kind == 'adhan' else 'iqamah_schedule' %}
-            {% set schedule = info.get(schedule_key) %}
-            <div class="mt-2 grid grid-cols-5 gap-2 text-center speaker-schedule {% if kind == 'iqamah' %}hidden{% endif %}"
-                 data-speaker="{{ name }}" data-kind="{{ kind }}">
-              {% for prayer in prayer_names %}
-              {% set prayer_days = schedule.get(prayer) if schedule else None %}
-              {% set prayer_enabled = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (prayer_days | length > 0) %}
-              <div>
-                <div class="text-[10px] text-slate-500 mb-1">{{ prayer }}</div>
-                <input type="checkbox" class="speaker-prayer-toggle accent-emerald-500 w-3.5 h-3.5"
-                       data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}"
-                       {% if prayer_enabled %}checked{% endif %}>
-                <div class="day-picker mt-1 hidden" data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}">
-                  {% for day_idx, day_label in [(0,'M'),(1,'T'),(2,'W'),(3,'T'),(4,'F'),(5,'S'),(6,'S')] %}
-                  {% set day_active = (schedule is none) or (prayer not in schedule) or (prayer_days is none) or (day_idx in prayer_days) %}
-                  <button type="button"
-                          class="speaker-day-btn w-5 h-5 text-[9px] rounded-full m-0.5
-                                 {% if day_active %}bg-emerald-600 text-white{% else %}bg-slate-600 text-slate-400{% endif %}"
-                          data-speaker="{{ name }}" data-kind="{{ kind }}" data-prayer="{{ prayer }}" data-day="{{ day_idx }}">{{ day_label }}</button>
-                  {% endfor %}
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            {% endfor %}
-            <button onclick="toggleSpeakerDayPickers('{{ name }}')"
-                    class="mt-2 text-xs text-slate-400 hover:text-slate-300 underline">
-              Customize days
-            </button>
-            {% if info.get('iqamah_schedule') is none %}
-            <p class="mt-1 text-[10px] text-slate-500 italic speaker-iqamah-hint"
-               data-speaker="{{ name }}">
-              Iqamah inherits the Adhan schedule until you customise it here.
-            </p>
-            {% endif %}
-          </details>
-        </div>
-        {% endfor %}
-        {% else %}
-        <p class="text-slate-500 text-sm">No speakers discovered yet. Click "Discover Speakers" to scan your network.</p>
-        {% endif %}
-      </div>
-    </section>
-
-    <!-- WiFi status (read-only — active management requires SSH) -->
-    <section class="bg-slate-800 rounded-2xl shadow-lg p-6 overflow-hidden">
-      <h2 class="text-xl font-semibold text-emerald-400 flex items-center gap-2 mb-2">
-        <i class="ph ph-wifi-high"></i> WiFi
-      </h2>
-      <p id="wifi-status" class="text-slate-300 text-sm">Checking network status...</p>
-      <div class="mt-3 bg-slate-700/40 border border-slate-600/50 rounded-lg p-3 text-xs text-slate-400">
-        <p class="flex items-start gap-2">
-          <i class="ph ph-info text-slate-300 mt-0.5"></i>
-          <span>
-            To change the network, SSH to the Pi and run:
-            <code class="ml-1 px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded">sudo nmcli device wifi list</code>
-            then
-            <code class="ml-1 px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded">sudo nmcli device wifi connect "SSID" password "…"</code>.
-          </span>
-        </p>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- Toast -->
-  <div id="toast"
-       class="fixed bottom-6 right-6 bg-emerald-600 text-white px-5 py-3 rounded-xl
-              shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
   </div>
 
-  <!-- Speaker log viewer modal -->
-  <div id="log-modal" class="fixed inset-0 z-50 hidden bg-black/70 flex items-center justify-center p-4">
-    <div class="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-700">
-        <div>
-          <h3 class="text-lg font-semibold text-emerald-400 flex items-center gap-2">
-            <i class="ph ph-file-text"></i>
-            <span id="log-modal-title">Playback Log</span>
-          </h3>
-          <p class="text-xs text-slate-500 mt-0.5">Last 7 days · auto-pruned daily</p>
+  <!-- Top tabs (desktop) -->
+  <div class="tabs">
+    {% for tid, label, ic in TABS %}
+    <div class="tab{% if tid == 'today' %} active{% endif %}" data-tab-btn="{{ tid }}" role="tab">{{ icon(ic, 16) }}{{ label }}</div>
+    {% endfor %}
+  </div>
+
+  <div class="content">
+
+    <!-- Missing-audio banner (populated by JS) -->
+    <div id="audio-warning" class="note warn hidden">
+      {{ icon('warning', 18) }}
+      <div><strong>Missing audio files.</strong> <span id="audio-warning-text"></span></div>
+    </div>
+
+    <!-- Low-disk banner (populated by JS from /api/status) -->
+    <div id="disk-warning" class="note err hidden">
+      {{ icon('hardDrives', 18) }}
+      <div><strong>Low disk space.</strong> <span id="disk-warning-text"></span></div>
+    </div>
+
+    <!-- ============================ TODAY ============================ -->
+    <div class="tabpane" data-tab="today">
+      {% if has_location and next_prayer %}
+      <div class="hero">
+        <div class="texture" style="border-radius:inherit"></div>
+        <div class="hero-left">
+          <div class="hero-glyph">{{ icon(PMETA[next_prayer.name][1], 28) }}</div>
+          <div>
+            <div class="hero-kicker">Next Prayer</div>
+            <div class="hero-name">{{ next_prayer.name }}</div>
+            <div class="hero-sub">Iqamah {{ iqamah_times.get(next_prayer.name, '—') }} · calling on {{ enabled_count }} speaker{{ '' if enabled_count == 1 else 's' }}</div>
+          </div>
         </div>
-        <button onclick="closeLogModal()" class="text-slate-400 hover:text-white p-1">
-          <i class="ph ph-x text-xl"></i>
-        </button>
+        <div class="hero-right">
+          <div class="hero-kicker">Begins in</div>
+          <div class="hero-count" id="countdown" data-iso="{{ next_prayer.iso }}">--:--:--</div>
+        </div>
       </div>
-      <div id="log-modal-body" class="flex-1 overflow-y-auto p-4 text-sm font-mono">
-        <p class="text-slate-500">Loading...</p>
+      {% elif not has_location %}
+      <div class="hero">
+        <div class="texture" style="border-radius:inherit"></div>
+        <div class="hero-left">
+          <div class="hero-glyph">{{ icon('mapPin', 28) }}</div>
+          <div>
+            <div class="hero-kicker">Welcome</div>
+            <div class="hero-name">Bilâl</div>
+            <div class="hero-sub">Set your location in Settings to see today's prayer times.</div>
+          </div>
+        </div>
       </div>
-      <div class="flex items-center justify-between px-5 py-3 border-t border-slate-700 text-xs">
-        <span id="log-modal-count" class="text-slate-500"></span>
-        <div class="flex gap-2">
-          <button onclick="refreshLogModal()"
-                  class="text-slate-400 hover:text-white px-3 py-1 rounded-md inline-flex items-center gap-1">
-            <i class="ph ph-arrow-clockwise"></i> Refresh
+      {% endif %}
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('clock') }} Today's Prayer Times<span class="sub">{{ config.calculation_method }}</span></div>
+        {% if has_location %}
+        <div class="prow head">
+          <span class="colh">Prayer</span>
+          <span class="colh" style="text-align:center">Adhan</span>
+          <span class="colh" style="text-align:center">Iqamah</span>
+          <span class="colh" style="text-align:right">On</span>
+        </div>
+        {% for name in ['Fajr','Sunrise','Dhuhr','Asr','Maghrib','Isha'] %}
+        {% set t = prayer_times.get(name) %}
+        {% if t %}
+        {% if name == 'Sunrise' %}
+        <div class="prow sunrise">
+          <span class="pn">{{ icon('sunrise', 17) }}Sunrise<span class="ar">شروق</span></span>
+          {% set bits = t.split(' ') %}
+          <span class="adh">{{ bits[0] }}{% if bits|length > 1 %}<span class="ampm">{{ bits[1] }}</span>{% endif %}</span>
+          <span class="iqa"><span class="dash">—</span></span>
+          <span class="on"><span class="dash">—</span></span>
+        </div>
+        {% else %}
+        {% set skipped = name in config.skip_prayers %}
+        {% set is_now = next_prayer and next_prayer.name == name %}
+        <div class="prow{% if is_now %} now{% endif %}{% if skipped %} skipped{% endif %}">
+          <span class="pn">{{ icon(PMETA[name][1], 17) }}{{ name }}<span class="ar">{{ PMETA[name][0] }}</span></span>
+          {% set bits = t.split(' ') %}
+          <span class="adh">{{ bits[0] }}{% if bits|length > 1 %}<span class="ampm">{{ bits[1] }}</span>{% endif %}</span>
+          <span class="iqa">{{ iqamah_times.get(name, '—') }}</span>
+          <span class="on"><span class="sw{% if skipped %} off{% endif %}" data-skip-prayer="{{ name }}" role="switch" title="Play the Adhan for {{ name }}"></span></span>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <p class="pane-sub">Location not configured. Open <strong>Settings</strong> to set it up.</p>
+        {% endif %}
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <div class="panel-h">{{ icon('minaretWaves') }} Calling on</div>
+          {% if config.speakers %}
+          <div style="display:flex;flex-direction:column;gap:12px">
+            {% for name, info in config.speakers.items() %}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                <span style="color:var(--brand);display:flex">{{ icon('speaker', 17) }}</span>
+                <div style="min-width:0">
+                  <div style="font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ name }}</div>
+                  <div style="font-size:11px;color:var(--muted);white-space:nowrap">{{ info.model or ('Group' if info.is_group else 'Speaker') }}</div>
+                </div>
+              </div>
+              <span class="sw{% if not info.enabled %} off{% endif %}" data-speaker-toggle="{{ name }}" role="switch"></span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="pane-sub" style="margin:0">No speakers yet — add them in the <strong>Speakers</strong> tab.</p>
+          {% endif %}
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">{{ icon('moon') }} Quiet hours</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <div style="font-weight:600;font-size:14px">Do Not Disturb</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px">{{ config.dnd_start }} – {{ config.dnd_end }}</div>
+            </div>
+            <span class="sw{% if not config.dnd_enabled %} off{% endif %}" data-config-key="dnd_enabled" role="switch"></span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div>
+              <div style="font-weight:600;font-size:14px">Friday Sela</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px">{{ config.friday_sela_offset }} min before Jummah</div>
+            </div>
+            <span class="sw{% if not config.friday_sela_enabled %} off{% endif %}" data-config-key="friday_sela_enabled" role="switch"></span>
+          </div>
+          <div class="pillrow" style="margin-top:16px">
+            {% if has_location %}<span class="chip">{{ icon('mapPin', 13) }} {{ config.city }}</span>{% endif %}
+            <span class="chip" id="net-chip">{{ icon('wifi', 13) }} <span>Network</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ SCHEDULE ============================ -->
+    <div class="tabpane hidden" data-tab="schedule">
+      <div class="pane-head">
+        <div class="pane-title">{{ icon('calendar', 22) }} Schedule</div>
+        <p class="pane-sub">When the Iqamah, Friday Sela, and quiet hours fire — all in one place.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('clock') }} Iqamah offsets
+          <label style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-weight:600">
+            Play alert<span class="sw{% if not config.iqamah_enabled %} off{% endif %}" data-config-key="iqamah_enabled" role="switch"></span>
+          </label>
+        </div>
+        <p class="pane-sub" style="margin:-6px 0 14px">Minutes after the Adhan before the Iqamah is called.</p>
+        <div class="field" style="margin-bottom:14px">
+          <label>Alert sound</label>
+          <select class="sel" id="iqamah-audio">
+            {% for f in audio_files %}
+            <option value="{{ f.filename }}"{% if f.filename == config.iqamah_audio_file %} selected{% endif %}>{{ f.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="minigrid">
+          {% for name in prayer_names %}
+          <div class="minibox">
+            <div class="ml">{{ name }}</div>
+            <div class="stepper" data-prayer="{{ name }}">
+              <button type="button" data-step="-1">−</button>
+              <span class="num">{{ config.iqamah_offsets.get(name, 15) }}</span>
+              <button type="button" data-step="1">+</button>
+            </div>
+            <div class="unit">minutes</div>
+          </div>
+          {% endfor %}
+        </div>
+        <button class="btn block" style="margin-top:18px" id="save-offsets">{{ icon('clock', 15) }} Save offsets</button>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <div class="panel-h">{{ icon('calendar') }} Friday Sela
+            <span style="margin-left:auto"><span class="sw{% if not config.friday_sela_enabled %} off{% endif %}" data-config-key="friday_sela_enabled" role="switch"></span></span>
+          </div>
+          <p class="pane-sub" style="margin:-4px 0 14px">Plays before Jummah (Friday Dhuhr) only.</p>
+          <div class="field">
+            <label>Audio</label>
+            <select class="sel" id="sela-audio">
+              {% for f in sela_files %}
+              <option value="{{ f.filename }}"{% if f.filename == config.friday_sela_audio_file %} selected{% endif %}>{{ f.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="height:14px"></div>
+          <div class="field">
+            <label>Minutes before Dhuhr</label>
+            <input class="inp" type="number" min="1" max="120" id="sela-offset" value="{{ config.friday_sela_offset }}">
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">{{ icon('moon') }} Do Not Disturb
+            <span style="margin-left:auto"><span class="sw{% if not config.dnd_enabled %} off{% endif %}" data-config-key="dnd_enabled" role="switch"></span></span>
+          </div>
+          <p class="pane-sub" style="margin:-4px 0 14px">Mute the Adhan during sleep hours.</p>
+          <div class="formgrid">
+            <div class="field"><label>Quiet from</label><input class="inp" type="time" id="dnd-start" value="{{ config.dnd_start }}"></div>
+            <div class="field"><label>Quiet until</label><input class="inp" type="time" id="dnd-end" value="{{ config.dnd_end }}"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================ THE CALL ============================ -->
+    <div class="tabpane hidden" data-tab="call">
+      <div class="pane-head">
+        <div class="pane-title">{{ icon('muezzin', 22) }} The Call</div>
+        <p class="pane-sub">Choose the muezzin's recitation for each prayer, and set the volume.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('muezzin') }} Adhan recitation</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          {% for name in prayer_names %}
+          <div class="call-row" style="display:grid;grid-template-columns:120px 1fr auto;gap:12px;align-items:center">
+            <span style="display:flex;align-items:center;gap:9px;font-family:'Aref Ruqaa',serif;font-weight:700;font-size:16px">{{ icon(PMETA[name][1], 17, 'cmuted') }}{{ name }}</span>
+            <select class="sel adhan-audio" data-prayer="{{ name }}">
+              {% if audio_files_by_prayer[name] %}
+                {% for f in audio_files_by_prayer[name] %}
+                <option value="{{ f.filename }}"{% if f.filename == config.adhan_audio_files.get(name) %} selected{% endif %}>{{ f.label }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="" disabled selected>(no audio for {{ name }})</option>
+              {% endif %}
+            </select>
+            <button class="btn ghost preview-btn" data-prayer="{{ name }}">{{ icon('muezzin', 15) }} Preview</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="note" style="margin-top:16px">
+          {{ icon('cloudMoon', 16) }}
+          <span>Fajr commonly uses a distinct recitation that includes <em>“aṣ-ṣalātu khayrun min an-nawm.”</em> Set it independently above.</span>
+        </div>
+        <audio id="preview-player" class="hidden"></audio>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('speaker') }} Default volume</div>
+        <p class="pane-sub" style="margin:-4px 0 14px">Applied to every speaker unless it has its own override.</p>
+        <div class="range">
+          <input type="range" min="0" max="100" id="volume" value="{{ (config.volume * 100)|int }}">
+          <span class="val" id="vol-label">{{ (config.volume * 100)|int }}%</span>
+        </div>
+        <button class="btn block" style="margin-top:18px" id="save-audio">{{ icon('muezzin', 15) }} Save audio</button>
+      </div>
+    </div>
+
+    <!-- ============================ SPEAKERS ============================ -->
+    <div class="tabpane hidden" data-tab="speakers">
+      <div class="pane-head">
+        <div class="pane-title">{{ icon('minaretWaves', 22) }} Speakers</div>
+        <p class="pane-sub">The Google Nest devices that carry the call. Tap a speaker to set which prayers play on which days.</p>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:-8px">
+        <button class="btn ghost" id="discover-btn">{{ icon('broadcast', 15) }}<span class="discover-label">Discover speakers</span></button>
+      </div>
+
+      {% if config.speakers %}
+      <div class="panel">
+        <button class="linkbtn" id="applyall-toggle">{{ icon('calendar', 14) }} Set one schedule for all speakers</button>
+        <div id="applyall-body" class="sched hidden">
+          <div class="sched-head">
+            <div class="seg" data-seg="all">
+              <button class="on" data-kind="adhan">Adhan</button>
+              <button data-kind="iqamah">Iqamah</button>
+            </div>
+          </div>
+          {% for kind in ['adhan','iqamah'] %}
+          <div class="schedgrid sched-kind{% if kind == 'iqamah' %} hidden{% endif %}" data-kind="{{ kind }}">
+            <div></div>
+            {% for label, idx in DAYS %}<div class="dh">{{ label }}</div>{% endfor %}
+            {% for name in prayer_names %}
+            <div class="pl">{{ icon(PMETA[name][1], 15) }}{{ name }}</div>
+            {% for label, idx in DAYS %}
+            <div class="daycell"><div class="daydot on" data-prayer="{{ name }}" data-day="{{ idx }}" title="{{ name }} {{ label }}"></div></div>
+            {% endfor %}
+            {% endfor %}
+          </div>
+          {% endfor %}
+          <button class="btn block" style="margin-top:16px" id="applyall-save">{{ icon('broadcast', 15) }} Apply to all speakers</button>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if config.speakers %}
+      <div>
+        {% for name, info in config.speakers.items() %}
+        {% set sp_vol = info.get('volume') %}
+        {% set match_by = info.get('match_by', 'device') %}
+        <div class="spk" data-speaker="{{ name }}">
+          <div class="spk-top">
+            <div class="spk-id">
+              <div class="spk-ic">{{ icon('speaker', 19) }}</div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                  <span class="spk-name">{{ name }}</span>
+                  {% if info.is_group %}<span class="tagpill">Group</span>{% endif %}
+                </div>
+                <div class="spk-model">{{ info.model or ('Speaker group' if info.is_group else 'Google Cast device') }}</div>
+              </div>
+            </div>
+            <div class="spk-actions">
+              <button class="btn ghost test-btn" data-speaker="{{ name }}">{{ icon('muezzin', 15) }} Test</button>
+              <div class="iconghost remove-btn" data-speaker="{{ name }}" role="button" title="Remove speaker">{{ icon('trash', 16) }}</div>
+              <span class="sw{% if not info.enabled %} off{% endif %}" data-speaker-toggle="{{ name }}" role="switch"></span>
+            </div>
+          </div>
+
+          <div class="range" style="margin-top:14px">
+            {{ icon('speaker', 15, 'cmuted') }}
+            <input type="range" min="0" max="100" class="spk-volume" data-speaker="{{ name }}" value="{{ ((sp_vol if sp_vol is not none else config.volume) * 100)|int }}">
+            <span class="val">{{ ((sp_vol if sp_vol is not none else config.volume) * 100)|int }}%</span>
+            <button class="linkbtn spk-vol-reset{% if sp_vol is none %} hidden{% endif %}" data-speaker="{{ name }}" title="Reset to default volume" style="font-size:11.5px">reset</button>
+          </div>
+
+          <div class="refind">
+            {{ icon('crosshair', 14) }}
+            <span>Re-find by:</span>
+            <select class="sel speaker-match-by" data-speaker="{{ name }}">
+              <option value="device"{% if match_by != 'name' %} selected{% endif %}>This exact device</option>
+              <option value="name"{% if match_by == 'name' %} selected{% endif %}>Any device named “{{ name }}”</option>
+            </select>
+            {% if match_by != 'name' and not info.get('uuid') %}
+            <span class="warnflag" title="No device ID stored yet — run Discover so this speaker can be pinned to its exact unit.">⚠ no ID yet</span>
+            {% endif %}
+          </div>
+
+          <div style="margin-top:12px">
+            <button class="linkbtn sched-toggle" data-speaker="{{ name }}">{{ icon('calendar', 14) }}<span class="sched-toggle-label">Edit prayer schedule</span></button>
+            <div class="sched hidden">
+              <div class="sched-head">
+                <div class="seg" data-seg="{{ name }}">
+                  <button class="on" data-kind="adhan">Adhan</button>
+                  <button data-kind="iqamah">Iqamah</button>
+                </div>
+                <button class="linkbtn logs-btn" data-speaker="{{ name }}">{{ icon('fileText', 14) }} Logs</button>
+              </div>
+              {% for kind in ['adhan','iqamah'] %}
+              {% set sched = info.get('schedule') if kind == 'adhan' else (info.get('iqamah_schedule') if info.get('iqamah_schedule') is not none else info.get('schedule')) %}
+              <div class="schedgrid sched-kind{% if kind == 'iqamah' %} hidden{% endif %}" data-speaker="{{ name }}" data-kind="{{ kind }}">
+                <div></div>
+                {% for label, idx in DAYS %}<div class="dh">{{ label }}</div>{% endfor %}
+                {% for prayer in prayer_names %}
+                {% set pdays = sched.get(prayer) if sched else none %}
+                <div class="pl">{{ icon(PMETA[prayer][1], 15) }}{{ prayer }}</div>
+                {% for label, idx in DAYS %}
+                {% set active = (sched is none) or (prayer not in sched) or (pdays is none) or (idx in pdays) %}
+                <div class="daycell"><div class="daydot{% if active %} on{% endif %}" data-prayer="{{ prayer }}" data-day="{{ idx }}" title="{{ prayer }} {{ label }}"></div></div>
+                {% endfor %}
+                {% endfor %}
+              </div>
+              {% endfor %}
+              {% if info.get('iqamah_schedule') is none %}
+              <p class="pane-sub iqamah-hint" style="margin-top:8px;font-style:italic">Iqamah inherits the Adhan schedule until you customise it here.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="note">{{ icon('info', 16) }}<span>No speakers discovered yet. Click <strong>Discover speakers</strong> to scan your network for Google Nest / Cast devices.</span></div>
+      {% endif %}
+    </div>
+
+    <!-- ============================ SETTINGS ============================ -->
+    <div class="tabpane hidden" data-tab="settings">
+      <div class="pane-head">
+        <div class="pane-title">{{ icon('sliders', 22) }} Settings</div>
+        <p class="pane-sub">Appearance, location, and how prayer times are calculated.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('moonStars') }} Appearance</div>
+        <p class="pane-sub" style="margin:-4px 0 14px">Pick a theme and mode. Your choice is remembered on this device.</p>
+        <div class="themegrid">
+          <button class="swatch" data-swatch="sakina">
+            <div class="swatch-bar"><span style="background:#2f6b46"></span><span style="background:#a9852f"></span><span style="background:#f3eee3"></span></div>
+            <div class="swatch-name">Sakina</div>
+            <div class="swatch-desc">Warm &amp; serene</div>
           </button>
-          <button onclick="clearLogsForCurrentSpeaker()"
-                  class="text-red-400 hover:text-red-300 px-3 py-1 rounded-md inline-flex items-center gap-1"
-                  title="Delete all playback log entries (affects all speakers)">
-            <i class="ph ph-trash"></i> Clear all
+          <button class="swatch" data-swatch="layl">
+            <div class="swatch-bar"><span style="background:#4cc59a"></span><span style="background:#d2a85a"></span><span style="background:#14171a"></span></div>
+            <div class="swatch-name">Layl</div>
+            <div class="swatch-desc">Refined jade</div>
           </button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px">
+          <span style="font-size:13px;font-weight:600;color:var(--ink)">Mode</span>
+          <div class="seg" id="mode-seg">
+            <button data-mode-opt="light">{{ icon('sun', 14) }}Light</button>
+            <button data-mode-opt="dark">{{ icon('moon', 14) }}Dark</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h">{{ icon('mapPin') }} Location</div>
+        <div class="formgrid">
+          <div class="field"><label>Latitude</label><input class="inp" id="lat" type="number" step="any" value="{{ config.latitude if config.latitude is not none else '' }}"></div>
+          <div class="field"><label>Longitude</label><input class="inp" id="lon" type="number" step="any" value="{{ config.longitude if config.longitude is not none else '' }}"></div>
+          <div class="field"><label>City</label><input class="inp" id="city" type="text" value="{{ config.city if config.city and config.city != 'Unknown' else '' }}"></div>
+          <div class="field"><label>Country</label><input class="inp" id="country" type="text" value="{{ config.country if config.country and config.country != 'Unknown' else '' }}"></div>
+          <div class="field span2"><label>Timezone</label><input class="inp" id="timezone" type="text" placeholder="e.g. America/Chicago" value="{{ config.timezone if config.timezone and config.timezone != 'UTC' else '' }}"></div>
+        </div>
+        <div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap">
+          <button class="linkbtn" id="detect-btn">{{ icon('broadcast', 14) }} Auto-detect from IP</button>
+          <button class="linkbtn" id="geocode-toggle">{{ icon('mapPin', 14) }} Look up by address</button>
+        </div>
+        <div id="geocode-row" class="hidden" style="margin-top:12px">
+          <div style="display:flex;gap:8px">
+            <input class="inp" id="address" type="text" placeholder="e.g. Austin, TX or 123 Main St, Dallas">
+            <button class="btn ghost" id="geocode-btn">Look up</button>
+          </div>
+          <p id="geocode-status" class="hint" style="margin-top:6px;color:var(--muted);font-size:11.5px"></p>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <div class="panel-h">{{ icon('clock') }} Calculation method</div>
+          <div class="field">
+            <label>Method</label>
+            <select class="sel" id="calc-method">
+              {% for m in methods %}
+              <option value="{{ m }}"{% if m == config.calculation_method %} selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <p class="pane-sub" style="margin-top:10px">Determines Fajr and Isha twilight angles. ISNA suits most of North America.</p>
+        </div>
+        <div class="panel">
+          <div class="panel-h">{{ icon('wifi') }} Network</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <span class="tagpill" id="wifi-pill">{{ icon('wifi', 13) }} <span id="wifi-pill-text">Checking…</span></span>
+            <span style="font-size:13px;color:var(--muted)" id="wifi-detail"></span>
+          </div>
+          <div class="note">
+            {{ icon('info', 16) }}
+            <span>To change networks, SSH to the Pi and run <code>sudo nmcli device wifi connect "SSID" password "…"</code>.</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn block" id="save-settings">{{ icon('sliders', 15) }} Save settings</button>
+    </div>
+
+  </div>
+
+  <!-- Bottom tabs (mobile) -->
+  <div class="botbar">
+    {% for tid, label, ic in TABS %}
+    <div class="bt{% if tid == 'today' %} active{% endif %}" data-tab-btn="{{ tid }}" role="tab">{{ icon(ic, 21) }}{{ label }}</div>
+    {% endfor %}
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"><span class="ticon">{{ icon('check', 15, 'i-ok') }}{{ icon('warning', 15, 'i-err') }}</span><span id="toast-msg"></span></div>
+
+  <!-- Playback log modal -->
+  <div class="modal hidden" id="log-modal">
+    <div class="sheet">
+      <div class="sheet-h">
+        <div class="t">{{ icon('fileText', 18) }}<span id="log-title">Playback log</span></div>
+        <div class="iconbtn" id="log-close" role="button">{{ icon('signOut', 16) }}</div>
+      </div>
+      <div class="sheet-b" id="log-body"><p class="pane-sub">Loading…</p></div>
+      <div class="sheet-f">
+        <span id="log-count"></span>
+        <div style="display:flex;gap:14px">
+          <button class="linkbtn" id="log-refresh">{{ icon('broadcast', 14) }} Refresh</button>
+          <button class="linkbtn" id="log-clear" style="color:#d9534f">{{ icon('trash', 14) }} Clear all</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // ── Helpers ──────────────────────────────────────────────────────────────
-    function toast(msg, error = false) {
-      const el = document.getElementById('toast');
-      el.textContent = msg;
-      el.className = el.className
-        .replace('translate-y-20 opacity-0', 'translate-y-0 opacity-100')
-        .replace(error ? 'bg-emerald-600' : 'bg-red-600', error ? 'bg-red-600' : 'bg-emerald-600');
-      setTimeout(() => {
-        el.className = el.className.replace('translate-y-0 opacity-100', 'translate-y-20 opacity-0');
-      }, 3000);
+  (function () {
+    "use strict";
+    var PRAYERS = {{ prayer_names | tojson }};
+    var GLOBAL_VOLUME = {{ (config.volume * 100)|int }};
+    var TAB_IDS = ['today', 'schedule', 'call', 'speakers', 'settings'];
+
+    var app = document.getElementById('app');
+    function $(s, r) { return (r || document).querySelector(s); }
+    function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+
+    /* ---------- prefs / theme ---------- */
+    var PREFS_KEY = 'bilal-prefs-v1';
+    function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; } }
+    var prefs = loadPrefs();
+    if (prefs.palette !== 'layl') prefs.palette = 'sakina';
+    if (prefs.mode !== 'dark') prefs.mode = 'light';
+    if (TAB_IDS.indexOf(prefs.tab) < 0) prefs.tab = 'today';
+    function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} }
+
+    function applyTheme() {
+      app.classList.remove('dir-sakina', 'dir-layl', 'dark');
+      app.classList.add('dir-' + prefs.palette);
+      if (prefs.mode === 'dark') app.classList.add('dark');
+      $$('[data-swatch]').forEach(function (s) { s.classList.toggle('on', s.dataset.swatch === prefs.palette); });
+      $$('[data-mode-opt]').forEach(function (b) { b.classList.toggle('on', b.dataset.modeOpt === prefs.mode); });
     }
 
-    // ── Countdown timer ───────────────────────────────────────────────────────
-    {% if next_prayer %}
-    const nextPrayerISO = "{{ next_prayer.iso }}";
-    const countdownEl = document.getElementById('countdown');
-    function updateCountdown() {
-      const diff = Math.max(0, Math.floor((new Date(nextPrayerISO) - Date.now()) / 1000));
-      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
-      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
-      const s = String(diff % 60).padStart(2, '0');
-      countdownEl.textContent = `${h}:${m}:${s}`;
-      if (diff === 0) {
-        countdownEl.textContent = 'Now';
-        setTimeout(() => location.reload(), 60000);
-      }
+    /* ---------- tabs ---------- */
+    function showTab(id) {
+      if (TAB_IDS.indexOf(id) < 0) id = 'today';
+      prefs.tab = id; savePrefs();
+      $$('.tabpane').forEach(function (p) { p.classList.toggle('hidden', p.dataset.tab !== id); });
+      $$('[data-tab-btn]').forEach(function (b) { b.classList.toggle('active', b.dataset.tabBtn === id); });
     }
-    updateCountdown();
-    setInterval(updateCountdown, 1000);
-    {% endif %}
+    $$('[data-tab-btn]').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tabBtn); }); });
 
-    // ── Settings ──────────────────────────────────────────────────────────────
-    async function saveSettings() {
-      const skipPrayers = [];
-      document.querySelectorAll('.prayer-toggle').forEach(cb => {
-        if (!cb.checked) skipPrayers.push(cb.dataset.prayer);
-      });
-      const adhanAudioFiles = {};
-      document.querySelectorAll('.adhan-audio-select').forEach(sel => {
-        adhanAudioFiles[sel.dataset.prayer] = sel.value;
-      });
-      const body = {
-        latitude: parseFloat(document.getElementById('lat').value) || null,
-        longitude: parseFloat(document.getElementById('lon').value) || null,
-        // Send city/country/timezone so they stay in sync with the
-        // coordinates the user just edited. The backend only updates
-        // non-empty values — blank strings are allowed.
-        city: document.getElementById('city').value.trim(),
-        country: document.getElementById('country').value.trim(),
-        timezone: document.getElementById('timezone').value.trim(),
-        calculation_method: document.getElementById('calc-method').value,
-        adhan_audio_files: adhanAudioFiles,
-        volume: parseInt(document.getElementById('volume').value) / 100,
-        skip_prayers: skipPrayers,
-      };
-      const resp = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (resp.ok) { toast('Settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
-      else {
-        const data = await resp.json();
-        if (data.errors && data.errors.length) {
-          toast(data.errors[0], true);
-        } else {
-          toast('Failed to save settings', true);
+    /* ---------- responsive ---------- */
+    window.addEventListener('resize', function () { app.classList.toggle('is-mobile', window.innerWidth < 760); });
+
+    /* ---------- toast ---------- */
+    var toastTimer;
+    function toast(msg, err) {
+      var t = $('#toast');
+      $('#toast-msg').textContent = msg;
+      t.classList.toggle('err', !!err);
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
+    }
+
+    /* ---------- save helpers ---------- */
+    function postJSON(url, body) {
+      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
+    function saveConfig(partial, okMsg) {
+      return postJSON('/api/config', partial).then(function (r) {
+        if (r.ok) { if (okMsg) toast(okMsg); return true; }
+        return r.json().then(function (d) {
+          toast(d && d.errors && d.errors[0] ? d.errors[0] : 'Save failed', true); return false;
+        }).catch(function () { toast('Save failed', true); return false; });
+      }).catch(function () { toast('Network error', true); return false; });
+    }
+    function saveSpeakers(partial, okMsg) {
+      return postJSON('/api/speakers', partial).then(function (r) {
+        if (r.ok) { if (okMsg) toast(okMsg); return true; }
+        return r.json().then(function (d) {
+          toast((d && (d.error || (d.errors && d.errors[0]))) || 'Save failed', true); return false;
+        }).catch(function () { toast('Save failed', true); return false; });
+      }).catch(function () { toast('Network error', true); return false; });
+    }
+
+    /* ---------- switches ---------- */
+    function isOff(sw) { return sw.classList.contains('off'); }
+    function setOn(sw, on) { sw.classList.toggle('off', !on); }
+    $$('.sw').forEach(function (sw) {
+      sw.addEventListener('click', function () {
+        var newOn = isOff(sw); /* currently off → turning on */
+        if (sw.dataset.configKey) {
+          var key = sw.dataset.configKey;
+          $$('.sw').forEach(function (e) { if (e.dataset.configKey === key) setOn(e, newOn); });
+          var p = {}; p[key] = newOn; saveConfig(p, 'Saved');
+        } else if (sw.dataset.speakerToggle) {
+          var name = sw.dataset.speakerToggle;
+          $$('.sw').forEach(function (e) { if (e.dataset.speakerToggle === name) setOn(e, newOn); });
+          var body = {}; body[name] = { enabled: newOn }; saveSpeakers(body);
+        } else if (sw.dataset.skipPrayer) {
+          setOn(sw, newOn);
+          var skip = [];
+          $$('.sw').forEach(function (e) { if (e.dataset.skipPrayer && isOff(e)) skip.push(e.dataset.skipPrayer); });
+          saveConfig({ skip_prayers: skip }, newOn ? (sw.dataset.skipPrayer + ' on') : (sw.dataset.skipPrayer + ' skipped'));
         }
-      }
-    }
-
-    // ── Iqamah offsets ────────────────────────────────────────────────────────
-    async function saveIqamah() {
-      const offsets = {};
-      {% for name in prayer_names %}
-      offsets['{{ name }}'] = parseInt(document.getElementById('iqamah-{{ name }}').value) || 0;
-      {% endfor %}
-      const body = {
-        iqamah_offsets: offsets,
-        iqamah_enabled: document.getElementById('iqamah-enabled').checked,
-        iqamah_audio_file: document.getElementById('iqamah-audio-file').value,
-      };
-      const resp = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (resp.ok) { toast('Iqamah settings saved! Reloading...'); setTimeout(() => location.reload(), 1500); }
-      else {
-        const data = await resp.json();
-        toast(data.errors ? data.errors[0] : 'Failed to save iqamah settings', true);
-      }
-    }
-
-    // ── Do Not Disturb ────────────────────────────────────────────────────────
-    async function saveFridaySela() {
-      const body = {
-        friday_sela_enabled: document.getElementById('friday-sela-enabled').checked,
-        friday_sela_audio_file: document.getElementById('friday-sela-audio-file').value,
-        friday_sela_offset: parseInt(document.getElementById('friday-sela-offset').value) || 45,
-      };
-      const resp = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (resp.ok) toast('Friday Sela settings saved!');
-      else toast('Failed to save Friday Sela settings', true);
-    }
-
-    async function saveDND() {
-      const body = {
-        dnd_enabled: document.getElementById('dnd-enabled').checked,
-        dnd_start: document.getElementById('dnd-start').value,
-        dnd_end: document.getElementById('dnd-end').value,
-      };
-      const resp = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (resp.ok) toast('DND schedule saved!');
-      else {
-        const data = await resp.json();
-        toast(data.errors ? data.errors[0] : 'Failed to save DND schedule', true);
-      }
-    }
-
-    // ── Location ──────────────────────────────────────────────────────────────
-    // Populate the four location fields (lat/lon/city/country/timezone)
-    // from a location dict returned by /api/detect-location or /api/geocode.
-    function applyLocation(data) {
-      document.getElementById('lat').value = data.latitude;
-      document.getElementById('lon').value = data.longitude;
-      if (data.city && data.city !== 'Unknown') {
-        document.getElementById('city').value = data.city;
-      }
-      if (data.country && data.country !== 'Unknown') {
-        document.getElementById('country').value = data.country;
-      }
-      if (data.timezone && data.timezone !== 'UTC') {
-        document.getElementById('timezone').value = data.timezone;
-      }
-    }
-
-    async function detectLocation() {
-      const btn = document.getElementById('detect-btn');
-      btn.textContent = 'Detecting...';
-      try {
-        const resp = await fetch('/api/detect-location', { method: 'POST' });
-        const data = await resp.json().catch(() => ({}));
-        if (resp.ok) {
-          applyLocation(data);
-          toast(`Detected: ${data.city}, ${data.country}`);
-        } else {
-          // Surface the real reason (e.g. "disk full / read-only") instead of a
-          // generic message, and remind the user to Save once fields are filled.
-          toast(data.error || 'Could not detect location from IP', true);
-        }
-      } catch (err) {
-        toast('Network error during detection', true);
-      } finally {
-        btn.textContent = 'Auto-detect from IP';
-      }
-    }
-
-    // Set the geocode status line with a Phosphor icon + plain-text message.
-    // Uses textContent/createElement to avoid any XSS risk from Nominatim data.
-    function setGeocodeStatus(iconClass, colorClass, message) {
-      const el = document.getElementById('geocode-status');
-      el.className = `text-xs ${colorClass} mt-1`;
-      el.replaceChildren();
-      const icon = document.createElement('i');
-      icon.className = `ph ${iconClass} mr-1`;
-      const text = document.createTextNode(message);
-      el.appendChild(icon);
-      el.appendChild(text);
-    }
-
-    async function geocodeAddress() {
-      const input = document.getElementById('address');
-      const btn = document.getElementById('geocode-btn');
-      const address = input.value.trim();
-      if (!address) {
-        setGeocodeStatus('ph-info', 'text-amber-400', 'Enter an address first.');
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = 'Looking up...';
-      setGeocodeStatus('ph-spinner', 'text-slate-400', 'Contacting OpenStreetMap...');
-      try {
-        const resp = await fetch('/api/geocode', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address }),
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          // Populate lat/lon/city/country/timezone — the user reviews
-          // everything in the form fields before clicking Save Settings.
-          applyLocation(data);
-          const summary = `${data.city}, ${data.country} — ${data.timezone} ` +
-            `(${Number(data.latitude).toFixed(4)}, ${Number(data.longitude).toFixed(4)})`;
-          setGeocodeStatus('ph-check-circle', 'text-emerald-400', summary);
-          toast(`Found: ${data.city}, ${data.country}`);
-        } else {
-          const msg = data.error || 'Lookup failed';
-          setGeocodeStatus('ph-warning-circle', 'text-red-400', msg);
-          toast(msg, true);
-        }
-      } catch (err) {
-        setGeocodeStatus(
-          'ph-warning-circle',
-          'text-red-400',
-          'Network error. Try again or enter coordinates manually.'
-        );
-        toast('Network error', true);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Look Up';
-      }
-    }
-
-    // ── Speakers ──────────────────────────────────────────────────────────────
-    async function discoverSpeakers() {
-      const btn = document.getElementById('discover-btn');
-      btn.textContent = 'Scanning...'; btn.disabled = true;
-      const resp = await fetch('/api/discover-speakers', { method: 'POST' });
-      if (resp.ok) {
-        const data = await resp.json();
-        toast(`Found ${data.speakers.length} speaker(s)`);
-        setTimeout(() => location.reload(), 1500);
-      } else toast('Discovery failed', true);
-      btn.textContent = 'Discover Speakers'; btn.disabled = false;
-    }
-
-    async function testSpeaker(name) {
-      toast(`Testing ${name}...`);
-      const resp = await fetch('/api/test-speaker', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ speaker: name }),
-      });
-      if (resp.ok) toast(`Playing on ${name}`);
-      else toast(`Test failed for ${name}`, true);
-    }
-
-    async function removeSpeaker(name) {
-      if (!confirm(`Remove "${name}" from saved speakers?`)) return;
-      const resp = await fetch(`/api/speakers/${encodeURIComponent(name)}`, { method: 'DELETE' });
-      if (resp.ok) { toast(`Removed ${name}`); setTimeout(() => location.reload(), 500); }
-      else toast(`Failed to remove ${name}`, true);
-    }
-
-    document.querySelectorAll('.speaker-toggle').forEach(cb => {
-      cb.addEventListener('change', async () => {
-        const speakers = {};
-        document.querySelectorAll('.speaker-toggle').forEach(el => {
-          speakers[el.dataset.speaker] = { enabled: el.checked };
-        });
-        await fetch('/api/speakers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(speakers),
-        });
       });
     });
 
-    // ── Per-speaker re-find identity (UUID vs name) ──────────────────────────
-    document.querySelectorAll('.speaker-match-by').forEach(sel => {
-      sel.addEventListener('change', async () => {
-        const speaker = sel.dataset.speaker;
-        await fetch('/api/speakers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [speaker]: { match_by: sel.value } }),
-        });
-        toast(sel.value === 'name'
-          ? `"${speaker}" will be re-found by name`
-          : `"${speaker}" pinned to this exact device`);
+    /* ---------- countdown ---------- */
+    var cd = $('#countdown');
+    if (cd && cd.dataset.iso) {
+      var target = new Date(cd.dataset.iso).getTime();
+      var tick = function () {
+        var diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
+        if (diff === 0) { cd.textContent = 'Now'; setTimeout(function () { location.reload(); }, 60000); return; }
+        var h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), s = diff % 60;
+        cd.textContent = h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+      };
+      tick();
+      setInterval(tick, 1000);
+    }
+
+    /* ---------- theme controls ---------- */
+    $('#mode-toggle').addEventListener('click', function () { prefs.mode = prefs.mode === 'dark' ? 'light' : 'dark'; applyTheme(); savePrefs(); });
+    $$('[data-swatch]').forEach(function (s) { s.addEventListener('click', function () { prefs.palette = s.dataset.swatch; applyTheme(); savePrefs(); }); });
+    $$('[data-mode-opt]').forEach(function (b) { b.addEventListener('click', function () { prefs.mode = b.dataset.modeOpt; applyTheme(); savePrefs(); }); });
+
+    /* ---------- iqamah steppers + save ---------- */
+    $$('.stepper button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var numEl = btn.parentNode.querySelector('.num');
+        var v = parseInt(numEl.textContent, 10) || 0;
+        v = Math.max(0, Math.min(120, v + parseInt(btn.dataset.step, 10)));
+        numEl.textContent = v;
       });
     });
+    var saveOffsets = $('#save-offsets');
+    if (saveOffsets) saveOffsets.addEventListener('click', function () {
+      var offsets = {};
+      $$('.stepper').forEach(function (st) { offsets[st.dataset.prayer] = parseInt(st.querySelector('.num').textContent, 10) || 0; });
+      saveConfig({ iqamah_offsets: offsets, iqamah_audio_file: $('#iqamah-audio').value }, 'Iqamah offsets saved');
+    });
 
-    // ── Per-speaker volume ──────────────────────────────────────────────────
-    const GLOBAL_VOLUME = {{ (config.volume * 100)|int }};
+    /* ---------- Friday Sela + DND auto-save ---------- */
+    function bindChange(id, build) {
+      var el = $('#' + id); if (!el) return;
+      el.addEventListener('change', function () { saveConfig(build(), 'Saved'); });
+    }
+    bindChange('sela-audio', function () { return { friday_sela_audio_file: $('#sela-audio').value }; });
+    bindChange('sela-offset', function () { return { friday_sela_offset: parseInt($('#sela-offset').value, 10) || 45 }; });
+    bindChange('dnd-start', function () { return { dnd_start: $('#dnd-start').value }; });
+    bindChange('dnd-end', function () { return { dnd_end: $('#dnd-end').value }; });
 
-    document.querySelectorAll('.speaker-volume').forEach(slider => {
-      let debounce;
-      slider.addEventListener('input', () => {
-        clearTimeout(debounce);
-        const speaker = slider.dataset.speaker;
-        // Show reset button when volume differs from global
-        const resetBtn = slider.closest('div').querySelector('[data-reset-btn]');
-        if (resetBtn) resetBtn.classList.toggle('hidden', parseInt(slider.value) === GLOBAL_VOLUME);
-        debounce = setTimeout(async () => {
-          await fetch('/api/speakers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ [speaker]: { volume: parseInt(slider.value) / 100 } }),
-          });
+    /* ---------- The Call: preview + save audio + volume ---------- */
+    $$('.preview-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var sel = null;
+        $$('.adhan-audio').forEach(function (s) { if (s.dataset.prayer === btn.dataset.prayer) sel = s; });
+        if (!sel || !sel.value) return;
+        var player = $('#preview-player');
+        player.src = '/audio/' + encodeURIComponent(sel.value);
+        player.classList.remove('hidden'); player.controls = true; player.play();
+      });
+    });
+    var vol = $('#volume');
+    if (vol) vol.addEventListener('input', function () { $('#vol-label').textContent = vol.value + '%'; });
+    var saveAudio = $('#save-audio');
+    if (saveAudio) saveAudio.addEventListener('click', function () {
+      var files = {};
+      $$('.adhan-audio').forEach(function (sel) { if (sel.value) files[sel.dataset.prayer] = sel.value; });
+      saveConfig({ adhan_audio_files: files, volume: parseInt(vol.value, 10) / 100 }, 'Audio settings saved');
+    });
+
+    /* ---------- Settings: save / detect / geocode ---------- */
+    var saveSettings = $('#save-settings');
+    if (saveSettings) saveSettings.addEventListener('click', function () {
+      var body = {
+        latitude: parseFloat($('#lat').value) || null,
+        longitude: parseFloat($('#lon').value) || null,
+        city: $('#city').value.trim(),
+        country: $('#country').value.trim(),
+        timezone: $('#timezone').value.trim(),
+        calculation_method: $('#calc-method').value
+      };
+      saveConfig(body, 'Settings saved').then(function (ok) { if (ok) setTimeout(function () { location.reload(); }, 900); });
+    });
+    function applyLocation(d) {
+      $('#lat').value = d.latitude; $('#lon').value = d.longitude;
+      if (d.city && d.city !== 'Unknown') $('#city').value = d.city;
+      if (d.country && d.country !== 'Unknown') $('#country').value = d.country;
+      if (d.timezone && d.timezone !== 'UTC') $('#timezone').value = d.timezone;
+    }
+    var detectBtn = $('#detect-btn');
+    if (detectBtn) detectBtn.addEventListener('click', function () {
+      detectBtn.disabled = true;
+      fetch('/api/detect-location', { method: 'POST' }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; }).catch(function () { return { ok: r.ok, d: {} }; });
+      }).then(function (res) {
+        if (res.ok) { applyLocation(res.d); toast('Detected: ' + res.d.city + ', ' + res.d.country); }
+        else { toast((res.d && res.d.error) || 'Could not detect location from IP', true); }
+      }).catch(function () { toast('Network error during detection', true); })
+        .then(function () { detectBtn.disabled = false; });
+    });
+    var geoToggle = $('#geocode-toggle');
+    if (geoToggle) geoToggle.addEventListener('click', function () { $('#geocode-row').classList.toggle('hidden'); });
+    var geoBtn = $('#geocode-btn');
+    if (geoBtn) geoBtn.addEventListener('click', function () {
+      var address = $('#address').value.trim();
+      var status = $('#geocode-status');
+      if (!address) { status.textContent = 'Enter an address first.'; return; }
+      geoBtn.disabled = true; status.textContent = 'Contacting OpenStreetMap…';
+      postJSON('/api/geocode', { address: address }).then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+      }).then(function (res) {
+        if (res.ok) {
+          applyLocation(res.d);
+          status.textContent = res.d.city + ', ' + res.d.country + ' — ' + res.d.timezone +
+            ' (' + Number(res.d.latitude).toFixed(4) + ', ' + Number(res.d.longitude).toFixed(4) + ')';
+          toast('Found: ' + res.d.city + ', ' + res.d.country);
+        } else {
+          status.textContent = (res.d && res.d.error) || 'Lookup failed';
+          toast('Lookup failed', true);
+        }
+      }).catch(function () { status.textContent = 'Network error. Enter coordinates manually.'; toast('Network error', true); })
+        .then(function () { geoBtn.disabled = false; });
+    });
+
+    /* ---------- Speakers: discover / test / remove / volume / match-by ---------- */
+    var discoverBtn = $('#discover-btn');
+    if (discoverBtn) discoverBtn.addEventListener('click', function () {
+      var label = discoverBtn.querySelector('.discover-label');
+      discoverBtn.disabled = true; if (label) label.textContent = 'Scanning…';
+      fetch('/api/discover-speakers', { method: 'POST' }).then(function (r) {
+        if (!r.ok) { toast('Discovery failed', true); return null; }
+        return r.json();
+      }).then(function (d) {
+        if (d) { toast('Found ' + d.speakers.length + ' speaker(s)'); setTimeout(function () { location.reload(); }, 1200); }
+        else { discoverBtn.disabled = false; if (label) label.textContent = 'Discover speakers'; }
+      }).catch(function () { toast('Network error', true); discoverBtn.disabled = false; if (label) label.textContent = 'Discover speakers'; });
+    });
+    $$('.test-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.dataset.speaker;
+        toast('Testing on ' + name + '…');
+        postJSON('/api/test-speaker', { speaker: name }).then(function (r) {
+          toast(r.ok ? 'Playing on ' + name : 'Test failed for ' + name, !r.ok);
+        }).catch(function () { toast('Test failed for ' + name, true); });
+      });
+    });
+    $$('.remove-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.dataset.speaker;
+        if (!confirm('Remove "' + name + '" from saved speakers?')) return;
+        fetch('/api/speakers/' + encodeURIComponent(name), { method: 'DELETE' }).then(function (r) {
+          if (r.ok) { toast('Removed ' + name); setTimeout(function () { location.reload(); }, 600); }
+          else toast('Failed to remove ' + name, true);
+        }).catch(function () { toast('Network error', true); });
+      });
+    });
+    $$('.spk-volume').forEach(function (slider) {
+      var timer;
+      slider.addEventListener('input', function () {
+        var name = slider.dataset.speaker;
+        var range = slider.closest('.range');
+        range.querySelector('.val').textContent = slider.value + '%';
+        var reset = range.querySelector('.spk-vol-reset');
+        if (reset) reset.classList.toggle('hidden', parseInt(slider.value, 10) === GLOBAL_VOLUME);
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          var body = {}; body[name] = { volume: parseInt(slider.value, 10) / 100 }; saveSpeakers(body);
         }, 300);
       });
     });
-
-    async function resetSpeakerVolume(speaker) {
-      const slider = document.querySelector(`.speaker-volume[data-speaker="${speaker}"]`);
-      if (slider) {
-        slider.value = GLOBAL_VOLUME;
-        slider.nextElementSibling.textContent = GLOBAL_VOLUME + '%';
-      }
-      const resetBtn = document.querySelector(`[data-reset-btn][data-speaker="${speaker}"]`);
-      if (resetBtn) resetBtn.classList.add('hidden');
-      await fetch('/api/speakers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [speaker]: { volume: null } }),
+    $$('.spk-vol-reset').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.dataset.speaker;
+        var range = btn.closest('.range');
+        var slider = range ? range.querySelector('.spk-volume') : null;
+        if (slider) { slider.value = GLOBAL_VOLUME; range.querySelector('.val').textContent = GLOBAL_VOLUME + '%'; }
+        btn.classList.add('hidden');
+        var body = {}; body[name] = { volume: null }; saveSpeakers(body, 'Reset to default volume');
       });
+    });
+    $$('.speaker-match-by').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var name = sel.dataset.speaker;
+        var body = {}; body[name] = { match_by: sel.value }; saveSpeakers(body);
+        toast(sel.value === 'name' ? '"' + name + '" re-found by name' : '"' + name + '" pinned to this device');
+      });
+    });
+
+    /* ---------- schedulers (per-speaker + apply-all) ---------- */
+    function buildSchedule(gridEl) {
+      if (!gridEl) return null;
+      var sched = {};
+      PRAYERS.forEach(function (p) {
+        var days = [];
+        $$('.daydot', gridEl).forEach(function (d) { if (d.dataset.prayer === p && d.classList.contains('on')) days.push(parseInt(d.dataset.day, 10)); });
+        sched[p] = days;
+      });
+      return sched;
     }
-
-    // ── Per-speaker schedule (Adhan + Iqamah) ─────────────────────────────────
-    const ALL_DAYS = [0,1,2,3,4,5,6];
-    const PRAYERS = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
-
-    // Which tab is active for each speaker's schedule editor.  Also tracks
-    // the global editor under key '*'.
-    const activeTab = { '*': 'adhan' };
-
-    function setTabState(btn, active) {
-      btn.classList.toggle('bg-emerald-600', active);
-      btn.classList.toggle('text-white', active);
-      btn.classList.toggle('bg-slate-600', !active);
-      btn.classList.toggle('text-slate-300', !active);
+    function gridForKind(container, kind) {
+      var found = null;
+      $$('.sched-kind', container).forEach(function (g) { if (g.dataset.kind === kind) found = g; });
+      return found;
     }
-
-    // Per-speaker tab switching
-    document.querySelectorAll('.speaker-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const speaker = btn.dataset.speaker;
-        const kind = btn.dataset.kind;
-        activeTab[speaker] = kind;
-        document.querySelectorAll(`.speaker-tab-btn[data-speaker="${speaker}"]`).forEach(b => {
-          setTabState(b, b.dataset.kind === kind);
+    /* seg switch (adhan / iqamah) scoped to its own .sched container */
+    $$('.seg[data-seg]').forEach(function (seg) {
+      var container = seg.closest('.sched');
+      $$('button', seg).forEach(function (b) {
+        b.addEventListener('click', function () {
+          var kind = b.dataset.kind;
+          $$('button', seg).forEach(function (x) { x.classList.toggle('on', x === b); });
+          $$('.sched-kind', container).forEach(function (g) { g.classList.toggle('hidden', g.dataset.kind !== kind); });
         });
-        document.querySelectorAll(`.speaker-schedule[data-speaker="${speaker}"]`).forEach(grid => {
-          grid.classList.toggle('hidden', grid.dataset.kind !== kind);
-        });
       });
     });
-
-    // Global tab switching (Apply-to-all header)
-    document.querySelectorAll('.global-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const kind = btn.dataset.globalTab;
-        activeTab['*'] = kind;
-        document.querySelectorAll('.global-tab-btn').forEach(b => {
-          setTabState(b, b.dataset.globalTab === kind);
-        });
-        const label = document.getElementById('global-tab-label');
-        if (label) label.textContent = kind === 'iqamah' ? 'Iqamah' : 'Adhan';
-      });
-    });
-
-    function toggleSpeakerDayPickers(speaker) {
-      const kind = activeTab[speaker] || 'adhan';
-      document.querySelectorAll(
-        `.speaker-schedule[data-speaker="${speaker}"][data-kind="${kind}"] .day-picker`
-      ).forEach(el => el.classList.toggle('hidden'));
-    }
-
-    function toggleGlobalDayPickers() {
-      document.querySelectorAll('#global-schedule .day-picker').forEach(el => {
-        el.classList.toggle('hidden');
-      });
-    }
-
-    // Per-speaker prayer toggle: enable/disable a prayer for this speaker+kind
-    document.querySelectorAll('.speaker-prayer-toggle').forEach(cb => {
-      cb.addEventListener('change', async () => {
-        await saveSpeakerSchedule(cb.dataset.speaker, cb.dataset.kind);
-      });
-    });
-
-    // Day button click: toggle a specific day for a prayer on a speaker+kind
-    document.querySelectorAll('.speaker-day-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const isActive = btn.classList.contains('bg-emerald-600');
-        btn.classList.toggle('bg-emerald-600', !isActive);
-        btn.classList.toggle('text-white', !isActive);
-        btn.classList.toggle('bg-slate-600', isActive);
-        btn.classList.toggle('text-slate-400', isActive);
-        await saveSpeakerSchedule(btn.dataset.speaker, btn.dataset.kind);
-      });
-    });
-
-    async function saveSpeakerSchedule(speaker, kind) {
-      const schedule = buildScheduleForSpeaker(speaker, kind);
-      const field = kind === 'iqamah' ? 'iqamah_schedule' : 'schedule';
-      await fetch('/api/speakers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [speaker]: { [field]: schedule } }),
-      });
-      if (kind === 'iqamah') {
-        const hint = document.querySelector(`.speaker-iqamah-hint[data-speaker="${speaker}"]`);
-        if (hint) hint.classList.add('hidden');
-      }
-    }
-
-    function buildScheduleForSpeaker(speaker, kind) {
-      const schedule = {};
-      const container = document.querySelector(
-        `.speaker-schedule[data-speaker="${speaker}"][data-kind="${kind}"]`
-      );
-      if (!container) return null;
-      PRAYERS.forEach(prayer => {
-        const toggle = container.querySelector(`.speaker-prayer-toggle[data-prayer="${prayer}"]`);
-        if (!toggle || !toggle.checked) {
-          schedule[prayer] = [];
-          return;
+    /* per-speaker day dots persist immediately */
+    $$('.spk .daydot').forEach(function (dot) {
+      dot.addEventListener('click', function () {
+        dot.classList.toggle('on');
+        var grid = dot.closest('.schedgrid');
+        var kind = grid.dataset.kind;
+        var name = grid.dataset.speaker;
+        var field = kind === 'iqamah' ? 'iqamah_schedule' : 'schedule';
+        var body = {}; body[name] = {}; body[name][field] = buildSchedule(grid);
+        saveSpeakers(body);
+        if (kind === 'iqamah') {
+          var sc = grid.closest('.sched');
+          var hint = sc ? sc.querySelector('.iqamah-hint') : null;
+          if (hint) hint.classList.add('hidden');
         }
-        const dayBtns = container.querySelectorAll(`.speaker-day-btn[data-prayer="${prayer}"]`);
-        if (dayBtns.length === 0) {
-          schedule[prayer] = ALL_DAYS.slice();
-          return;
-        }
-        const days = [];
-        dayBtns.forEach(b => {
-          if (b.classList.contains('bg-emerald-600')) days.push(parseInt(b.dataset.day));
-        });
-        schedule[prayer] = days;
       });
-      return schedule;
-    }
-
-    // Global day button toggle (visual only; applied on "Apply to All")
-    document.querySelectorAll('.global-day-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.classList.toggle('bg-emerald-600');
-        btn.classList.toggle('text-white');
-        btn.classList.toggle('bg-slate-600');
-        btn.classList.toggle('text-slate-400');
+    });
+    /* apply-all day dots are visual until "Apply" pressed */
+    $$('#applyall-body .daydot').forEach(function (dot) { dot.addEventListener('click', function () { dot.classList.toggle('on'); }); });
+    var applyToggle = $('#applyall-toggle');
+    if (applyToggle) applyToggle.addEventListener('click', function () { $('#applyall-body').classList.toggle('hidden'); });
+    var applySave = $('#applyall-save');
+    if (applySave) applySave.addEventListener('click', function () {
+      var body = $('#applyall-body');
+      var seg = $('.seg[data-seg="all"]', body);
+      var onBtn = seg ? $('button.on', seg) : null;
+      var kind = onBtn ? onBtn.dataset.kind : 'adhan';
+      var sched = buildSchedule(gridForKind(body, kind));
+      postJSON('/api/speakers/schedule/apply-all', { schedule: sched, kind: kind }).then(function (r) {
+        if (r.ok) { toast((kind === 'iqamah' ? 'Iqamah' : 'Adhan') + ' schedule applied to all'); setTimeout(function () { location.reload(); }, 1000); }
+        else toast('Failed to apply', true);
+      }).catch(function () { toast('Network error', true); });
+    });
+    $$('.sched-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var box = btn.parentNode.querySelector('.sched');
+        if (!box) return;
+        var nowHidden = box.classList.toggle('hidden');
+        var label = btn.querySelector('.sched-toggle-label');
+        if (label) label.textContent = nowHidden ? 'Edit prayer schedule' : 'Hide schedule';
       });
     });
 
-    async function applyScheduleToAll() {
-      const schedule = {};
-      PRAYERS.forEach(prayer => {
-        const toggle = document.querySelector(`.global-prayer-toggle[data-prayer="${prayer}"]`);
-        if (!toggle || !toggle.checked) {
-          schedule[prayer] = [];
-          return;
+    /* ---------- playback log modal ---------- */
+    var logSpeaker = null;
+    var logModal = $('#log-modal');
+    function openLog(name) { logSpeaker = name; $('#log-title').textContent = 'Playback log — ' + name; logModal.classList.remove('hidden'); refreshLog(); }
+    function closeLog() { logModal.classList.add('hidden'); logSpeaker = null; }
+    function refreshLog() {
+      var body = $('#log-body'), count = $('#log-count');
+      body.replaceChildren();
+      var p = document.createElement('p'); p.className = 'pane-sub'; p.textContent = 'Loading…'; body.appendChild(p);
+      var params = new URLSearchParams({ limit: '100' });
+      if (logSpeaker) params.set('speaker', logSpeaker);
+      fetch('/api/playback-log?' + params).then(function (r) { return r.json(); }).then(function (d) {
+        body.replaceChildren();
+        if (!d.entries || !d.entries.length) {
+          var e = document.createElement('p'); e.className = 'pane-sub'; e.textContent = 'No playback attempts recorded yet.'; body.appendChild(e);
+          count.textContent = ''; return;
         }
-        const dayBtns = document.querySelectorAll(`.global-day-btn[data-prayer="${prayer}"]`);
-        const days = [];
-        dayBtns.forEach(b => {
-          if (b.classList.contains('bg-emerald-600')) days.push(parseInt(b.dataset.day));
-        });
-        schedule[prayer] = days.length > 0 ? days : ALL_DAYS.slice();
+        d.entries.forEach(function (entry) { body.appendChild(makeLogRow(entry)); });
+        count.textContent = d.count + (d.count === 1 ? ' entry' : ' entries');
+      }).catch(function () {
+        body.replaceChildren();
+        var e = document.createElement('p'); e.className = 'pane-sub'; e.style.color = '#d9534f'; e.textContent = 'Failed to load logs.'; body.appendChild(e);
       });
-      const kind = activeTab['*'] || 'adhan';
-      const resp = await fetch('/api/speakers/schedule/apply-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schedule, kind }),
-      });
-      if (resp.ok) {
-        toast(`${kind === 'iqamah' ? 'Iqamah' : 'Adhan'} schedule applied to all speakers`);
-        setTimeout(() => location.reload(), 1000);
-      } else toast('Failed to apply schedule', true);
     }
-
-    // ── Playback log viewer ───────────────────────────────────────────────────
-    // All dynamic values (speaker names, error messages, event names) come
-    // from mDNS or exception strings, so rows are built with createElement +
-    // textContent rather than innerHTML to avoid any XSS risk.
-    let logModalSpeaker = null;
-
-    function openLogModal() {
-      document.getElementById('log-modal').classList.remove('hidden');
-    }
-
-    function closeLogModal() {
-      document.getElementById('log-modal').classList.add('hidden');
-      logModalSpeaker = null;
-    }
-
-    async function viewSpeakerLogs(speaker) {
-      logModalSpeaker = speaker;
-      document.getElementById('log-modal-title').textContent = `Playback log — ${speaker}`;
-      openLogModal();
-      await refreshLogModal();
-    }
-
     function makeLogRow(entry) {
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-2 py-1 border-b border-slate-700/50';
-
-      const icon = document.createElement('i');
-      icon.className = entry.ok
-        ? 'ph ph-check-circle text-emerald-400'
-        : 'ph ph-x-circle text-red-400';
-      row.appendChild(icon);
-
-      const when = document.createElement('span');
-      when.className = 'text-slate-500 text-xs';
-      const ts = new Date(entry.ts);
-      when.textContent = ts.toLocaleString(undefined, {
-        month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-      });
+      var row = document.createElement('div'); row.className = 'logrow';
+      var dot = document.createElement('span'); dot.className = 'dot ' + (entry.ok ? 'ok' : 'fail'); row.appendChild(dot);
+      var when = document.createElement('span'); when.className = 'when';
+      try { when.textContent = new Date(entry.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+      catch (e) { when.textContent = entry.ts || ''; }
       row.appendChild(when);
-
-      const ev = document.createElement('span');
-      ev.className = 'text-slate-300';
-      ev.textContent = entry.prayer ? `${entry.event} ${entry.prayer}` : entry.event;
-      row.appendChild(ev);
-
-      const status = document.createElement('span');
-      status.className = entry.ok
-        ? 'ml-auto text-emerald-400'
-        : 'ml-auto text-red-400';
-      status.textContent = entry.ok ? 'OK' : 'FAIL';
-      row.appendChild(status);
-
-      const elapsed = document.createElement('span');
-      elapsed.className = 'text-slate-500 text-xs w-16 text-right';
-      elapsed.textContent = `${entry.elapsed_ms} ms`;
-      row.appendChild(elapsed);
-
-      if (entry.error) {
-        const err = document.createElement('span');
-        err.className = 'text-slate-500 text-xs';
-        err.textContent = `(${entry.error})`;
-        row.appendChild(err);
-      }
-
+      var ev = document.createElement('span'); ev.className = 'ev'; ev.textContent = entry.prayer ? (entry.event + ' ' + entry.prayer) : entry.event; row.appendChild(ev);
+      var st = document.createElement('span'); st.className = 'st ' + (entry.ok ? 'ok' : 'fail'); st.textContent = entry.ok ? 'OK' : 'FAIL'; row.appendChild(st);
+      if (typeof entry.elapsed_ms !== 'undefined') { var el = document.createElement('span'); el.className = 'el'; el.textContent = entry.elapsed_ms + ' ms'; row.appendChild(el); }
       return row;
     }
-
-    async function refreshLogModal() {
-      const body = document.getElementById('log-modal-body');
-      const count = document.getElementById('log-modal-count');
-      body.replaceChildren();
-      const loading = document.createElement('p');
-      loading.className = 'text-slate-500';
-      loading.textContent = 'Loading...';
-      body.appendChild(loading);
-
-      const params = new URLSearchParams({ limit: '100' });
-      if (logModalSpeaker) params.set('speaker', logModalSpeaker);
-      try {
-        const resp = await fetch(`/api/playback-log?${params}`);
-        const data = await resp.json();
-        body.replaceChildren();
-        if (!data.entries || data.entries.length === 0) {
-          const empty = document.createElement('p');
-          empty.className = 'text-slate-500 text-sm';
-          empty.textContent = 'No playback attempts recorded yet for this speaker.';
-          body.appendChild(empty);
-          count.textContent = '';
-          return;
-        }
-        data.entries.forEach(entry => body.appendChild(makeLogRow(entry)));
-        count.textContent = `${data.count} entr${data.count === 1 ? 'y' : 'ies'}`;
-      } catch (e) {
-        body.replaceChildren();
-        const fail = document.createElement('p');
-        fail.className = 'text-red-400 text-sm';
-        fail.textContent = 'Failed to load logs.';
-        body.appendChild(fail);
-      }
-    }
-
-    async function clearLogsForCurrentSpeaker() {
+    $$('.logs-btn').forEach(function (btn) { btn.addEventListener('click', function () { openLog(btn.dataset.speaker); }); });
+    $('#log-close').addEventListener('click', closeLog);
+    $('#log-refresh').addEventListener('click', refreshLog);
+    $('#log-clear').addEventListener('click', function () {
       if (!confirm('Delete all playback log entries for every speaker?')) return;
-      const resp = await fetch('/api/playback-log?older_than_days=0', { method: 'DELETE' });
-      if (resp.ok) {
-        const data = await resp.json();
-        toast(`Cleared ${data.removed} log entr${data.removed === 1 ? 'y' : 'ies'}`);
-        await refreshLogModal();
-      } else toast('Failed to clear logs', true);
-    }
-
-    // Dismiss modal with Escape or backdrop click
-    document.getElementById('log-modal').addEventListener('click', (e) => {
-      if (e.target.id === 'log-modal') closeLogModal();
+      fetch('/api/playback-log?older_than_days=0', { method: 'DELETE' }).then(function (r) { return r.json(); }).then(function (d) {
+        toast('Cleared ' + d.removed + ' entr' + (d.removed === 1 ? 'y' : 'ies')); refreshLog();
+      }).catch(function () { toast('Failed to clear logs', true); });
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeLogModal();
-    });
+    logModal.addEventListener('click', function (e) { if (e.target === logModal) closeLog(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeLog(); });
 
-    // ── Audio preview ─────────────────────────────────────────────────────────
-    function previewAdhan(prayer) {
-      const sel = document.getElementById(`adhan-file-${prayer}`);
-      if (!sel || !sel.value) return;
-      const player = document.getElementById('preview-player');
-      player.src = `/audio/${sel.value}`;
-      player.classList.remove('hidden');
-      player.controls = true;
-      player.play();
-    }
-
-    // ── WiFi status (read-only; actual changes happen via SSH) ───────────────
-    async function loadWifiStatus() {
-      const el = document.getElementById('wifi-status');
-      try {
-        const resp = await fetch('/api/wifi/status');
-        const data = await resp.json();
-        if (data.connection && data.connection !== '--') {
-          el.textContent = `Connected to "${data.connection}"`;
-          el.classList.add('text-emerald-400');
-        } else if (data.state && data.state !== 'unknown') {
-          el.textContent = `Status: ${data.state}`;
-        } else if (data.error) {
-          el.textContent = data.error;
-        } else {
-          el.textContent = 'WiFi status unavailable.';
-        }
-      } catch {
-        el.textContent = 'WiFi status unavailable.';
+    /* ---------- WiFi status + audio validation ---------- */
+    fetch('/api/wifi/status').then(function (r) { return r.json(); }).then(function (d) {
+      var text = $('#wifi-pill-text'), detail = $('#wifi-detail'), chip = $('#net-chip');
+      if (d.connection && d.connection !== '--') { text.textContent = 'Connected'; detail.textContent = d.connection; if (chip) chip.querySelector('span').textContent = 'Online'; }
+      else if (d.state && d.state !== 'unknown') { text.textContent = d.state; }
+      else { text.textContent = 'Unknown'; }
+    }).catch(function () { var t = $('#wifi-pill-text'); if (t) t.textContent = 'Unavailable'; });
+    fetch('/api/audio/validate').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (d && d.missing && d.missing.length) {
+        $('#audio-warning-text').textContent = 'Missing: ' + d.missing.join(', ') + '. Place them in the audio/ directory for the Adhan to play.';
+        $('#audio-warning').classList.remove('hidden');
       }
-    }
+    }).catch(function () {});
 
-    // ── Audio file validation ────────────────────────────────────────────────
-    async function checkAudioFiles() {
-      try {
-        const resp = await fetch('/api/audio/validate');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data.missing && data.missing.length > 0) {
-          const el = document.getElementById('audio-warning');
-          const text = document.getElementById('audio-warning-text');
-          text.textContent = 'The following audio files are missing: ' + data.missing.join(', ') +
-            '. Place them in the audio/ directory for the Adhan to play.';
-          el.classList.remove('hidden');
-        }
-      } catch {}
-    }
+    /* ---------- disk space ----------
+       Warn below 10% (above the heartbeat's 5%/500MB floor) — a filling SD
+       card silently takes a unit dark even while the adhan still plays. */
+    var DISK_WARN_PCT = 10;
+    function formatBytes(n) { return n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : Math.round(n / 1048576) + ' MB'; }
+    fetch('/api/status').then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (!d || d.disk_free_pct == null || d.disk_free_pct >= DISK_WARN_PCT) return;
+      var free = d.disk_free_bytes != null ? formatBytes(d.disk_free_bytes) : 'very little space';
+      $('#disk-warning-text').textContent = 'Only ' + d.disk_free_pct + '% (' + free + ') free on the data volume. ' +
+        'Free up space soon — a full disk takes this unit offline even while the adhan still plays.';
+      $('#disk-warning').classList.remove('hidden');
+    }).catch(function () {});
 
-    // ── Disk space ───────────────────────────────────────────────────────────
-    // Warn well before the heartbeat's critical floor (5% / 500 MB) so a
-    // filling SD card is visible while there's still time to act — a full disk
-    // silently takes the unit offline even while adhan still plays.
-    const DISK_WARN_PCT = 10;
-    function formatBytes(n) {
-      if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB';
-      return Math.round(n / 1024 ** 2) + ' MB';
-    }
-    async function checkDiskSpace() {
-      try {
-        const resp = await fetch('/api/status');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data.disk_free_pct == null) return;  // probe couldn't read the disk
-        if (data.disk_free_pct >= DISK_WARN_PCT) return;
-        const el = document.getElementById('disk-warning');
-        const text = document.getElementById('disk-warning-text');
-        const free = data.disk_free_bytes != null ? formatBytes(data.disk_free_bytes) : 'very little space';
-        text.textContent = `Only ${data.disk_free_pct}% (${free}) free on the data volume. ` +
-          'Free up space soon — a full disk takes this unit offline even while adhan still plays.';
-        el.classList.remove('hidden');
-      } catch {}
-    }
-
-    // Init
-    loadWifiStatus();
-    checkAudioFiles();
-    checkDiskSpace();
+    /* ---------- init ---------- */
+    applyTheme();
+    showTab(prefs.tab);
+    app.classList.toggle('is-mobile', window.innerWidth < 760);
+  })();
   </script>
+</div>
 </body>
 </html>
