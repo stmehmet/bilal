@@ -17,6 +17,8 @@
   'broadcast': '<circle cx="12" cy="12" r="2.1"/><path d="M8.7 8.7a4.7 4.7 0 0 0 0 6.6M15.3 8.7a4.7 4.7 0 0 1 0 6.6M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/>',
   'sliders': '<path d="M4 8h9M4 16h5"/><circle cx="16.5" cy="8" r="2.6"/><circle cx="12.5" cy="16" r="2.6"/>',
   'home': '<path d="M3.6 11.3 12 4l8.4 7.3"/><path d="M5.6 9.8V19a1 1 0 0 0 1 1h3.1v-5.1h4.6V20h3.1a1 1 0 0 0 1-1V9.8"/>',
+  'monitor': '<rect x="3" y="4" width="18" height="12.4" rx="2"/><path d="M8.6 20h6.8M12 16.4V20"/>',
+  'phone': '<rect x="6.6" y="2.8" width="10.8" height="18.4" rx="2.6"/><path d="M10.6 18.4h2.8"/>',
   'speaker': '<rect x="6" y="3.4" width="12" height="17.2" rx="2.5"/><circle cx="12" cy="14.4" r="3.1"/><circle cx="12" cy="7.4" r="1"/>',
   'mapPin': '<path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/>',
   'wifi': '<path d="M2.6 9.2a14 14 0 0 1 18.8 0M5.8 12.6a9.4 9.4 0 0 1 12.4 0M9.2 16a4.4 4.4 0 0 1 5.6 0"/><circle cx="12" cy="19.1" r="1"/>',
@@ -46,6 +48,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bilâl – Dashboard</title>
+  {#- theme-color tints the browser/PWA chrome; updated live from the active palette's --bg so the area around a home-screen app matches light/dark -#}
+  <meta name="theme-color" content="#f3eee3">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Bilâl">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='minaret-100.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='minaret-100.png') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -87,6 +94,10 @@
     .bil .i-dark { display: none; }
     .bil.dark .i-light { display: none; }
     .bil.dark .i-dark { display: block; }
+    /* System mode shows a monitor on desktop, a phone on mobile */
+    .bil .i-sys-mobile { display: none; }
+    .bil.is-mobile .i-sys-desktop { display: none; }
+    .bil.is-mobile .i-sys-mobile { display: block; }
 
     .bil .tabs { display: flex; align-items: center; gap: 4px; padding: 0 24px; flex-shrink: 0; position: relative; z-index: 2; border-bottom: 1px solid var(--hair); }
     .bil .tab { display: inline-flex; align-items: center; gap: 7px; padding: 11px 15px; font-size: 13.5px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 11px 11px 0 0; white-space: nowrap; position: relative; transition: color .15s; }
@@ -371,8 +382,19 @@
     var el = document.getElementById('app');
     el.classList.remove('dir-sakina', 'dir-layl', 'dark');
     el.classList.add('dir-' + (p.palette === 'layl' ? 'layl' : 'sakina'));
-    if (p.mode === 'dark') el.classList.add('dark');
+    var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (p.mode === 'dark' || (p.mode === 'system' && sysDark)) el.classList.add('dark');
     if (window.innerWidth < 760) el.classList.add('is-mobile');
+    /* paint the page + browser chrome to match, so home-screen safe areas aren't white */
+    try {
+      var bg = getComputedStyle(el).getPropertyValue('--bg').trim();
+      if (bg) {
+        document.documentElement.style.backgroundColor = bg;
+        if (document.body) document.body.style.backgroundColor = bg;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', bg);
+      }
+    } catch (e) {}
   })();
 </script>
   <div class="texture"></div>
@@ -798,11 +820,12 @@
             <div class="swatch-desc">Refined jade</div>
           </button>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;flex-wrap:wrap;gap:10px">
           <span style="font-size:13px;font-weight:600;color:var(--ink)">Mode</span>
           <div class="seg" id="mode-seg">
             <button data-mode-opt="light">{{ icon('sun', 14) }}Light</button>
             <button data-mode-opt="dark">{{ icon('moon', 14) }}Dark</button>
+            <button data-mode-opt="system">{{ icon('monitor', 14, 'i-sys-desktop') }}{{ icon('phone', 14, 'i-sys-mobile') }}System</button>
           </div>
         </div>
       </div>
@@ -904,16 +927,38 @@
     function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; } }
     var prefs = loadPrefs();
     if (prefs.palette !== 'layl') prefs.palette = 'sakina';
-    if (prefs.mode !== 'dark') prefs.mode = 'light';
+    if (['light', 'dark', 'system'].indexOf(prefs.mode) < 0) prefs.mode = 'light';
     if (TAB_IDS.indexOf(prefs.tab) < 0) prefs.tab = 'today';
     function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} }
+
+    /* 'system' follows the OS setting; light/dark are explicit overrides */
+    var darkMQ = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    function effectiveDark() { return prefs.mode === 'dark' || (prefs.mode === 'system' && !!(darkMQ && darkMQ.matches)); }
+
+    /* keep the page background + browser/PWA chrome matched to the active theme */
+    function updateChrome() {
+      try {
+        var bg = getComputedStyle(app).getPropertyValue('--bg').trim();
+        if (!bg) return;
+        document.documentElement.style.backgroundColor = bg;
+        document.body.style.backgroundColor = bg;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', bg);
+      } catch (e) {}
+    }
 
     function applyTheme() {
       app.classList.remove('dir-sakina', 'dir-layl', 'dark');
       app.classList.add('dir-' + prefs.palette);
-      if (prefs.mode === 'dark') app.classList.add('dark');
+      if (effectiveDark()) app.classList.add('dark');
       $$('[data-swatch]').forEach(function (s) { s.classList.toggle('on', s.dataset.swatch === prefs.palette); });
       $$('[data-mode-opt]').forEach(function (b) { b.classList.toggle('on', b.dataset.modeOpt === prefs.mode); });
+      updateChrome();
+    }
+    if (darkMQ) {
+      var onSysChange = function () { if (prefs.mode === 'system') applyTheme(); };
+      if (darkMQ.addEventListener) darkMQ.addEventListener('change', onSysChange);
+      else if (darkMQ.addListener) darkMQ.addListener(onSysChange);
     }
 
     /* ---------- tabs ---------- */
@@ -998,7 +1043,7 @@
     }
 
     /* ---------- theme controls ---------- */
-    $('#mode-toggle').addEventListener('click', function () { prefs.mode = prefs.mode === 'dark' ? 'light' : 'dark'; applyTheme(); savePrefs(); });
+    $('#mode-toggle').addEventListener('click', function () { prefs.mode = effectiveDark() ? 'light' : 'dark'; applyTheme(); savePrefs(); });
     $$('[data-swatch]').forEach(function (s) { s.addEventListener('click', function () { prefs.palette = s.dataset.swatch; applyTheme(); savePrefs(); }); });
     $$('[data-mode-opt]').forEach(function (b) { b.addEventListener('click', function () { prefs.mode = b.dataset.modeOpt; applyTheme(); savePrefs(); }); });
 
