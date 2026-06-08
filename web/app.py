@@ -196,6 +196,33 @@ def _build_sela_file_list() -> list[dict]:
     return entries
 
 
+# Dedicated Iqamah alert tones. The Iqamah is announced with its own short
+# tone rather than a full adhan recitation, so its dropdown offers only these
+# two dedicated files instead of listing every adhan in the library. The user
+# can drop a matching .mp3 into the audio directory to enable a tone.
+IQAMAH_TONES: list[dict] = [
+    {"filename": "iqamah_bell.mp3", "label": "Bell"},
+    {"filename": "iqamah_chime.mp3", "label": "Chime"},
+]
+
+
+def _build_iqamah_file_list() -> list[dict]:
+    """Return the dedicated Iqamah alert tones for the dropdown.
+
+    The two canonical tones are always offered — they can be selected even
+    before the matching .mp3 exists on disk — and any additional
+    ``iqamah_*.mp3`` files found in the audio directory are appended.
+    """
+    entries = [dict(t) for t in IQAMAH_TONES]
+    seen = {t["filename"] for t in entries}
+    if AUDIO_DIR.exists():
+        for f in sorted(AUDIO_DIR.iterdir(), key=lambda p: p.name):
+            if f.suffix == ".mp3" and f.name.startswith("iqamah_") and f.name not in seen:
+                entries.append({"filename": f.name, "label": audio_display_label(f.name)})
+                seen.add(f.name)
+    return entries
+
+
 def _build_audio_files_by_prayer() -> dict[str, list[dict]]:
     """Return per-prayer adhan dropdown options.
 
@@ -372,6 +399,7 @@ def dashboard():
     audio_files = _build_audio_file_list()
     audio_files_by_prayer = _build_audio_files_by_prayer()
     sela_files = _build_sela_file_list()
+    iqamah_files = _build_iqamah_file_list()
 
     return render_template(
         "dashboard.html",
@@ -384,6 +412,7 @@ def dashboard():
         audio_files=audio_files,
         audio_files_by_prayer=audio_files_by_prayer,
         sela_files=sela_files,
+        iqamah_files=iqamah_files,
         next_prayer=next_prayer,
     )
 
