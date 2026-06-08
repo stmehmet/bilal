@@ -699,3 +699,21 @@ class TestStatus:
         data = logged_in_client.get("/api/status").get_json()
         assert data["last_playback_success"] is not None  # the ok=True entry
 
+    def test_status_reports_disk_fields(self, logged_in_client, monkeypatch):
+        import diskspace
+        monkeypatch.setattr(
+            diskspace, "usage",
+            lambda: {"total_bytes": 1000, "free_bytes": 120, "free_pct": 12.0},
+        )
+        data = logged_in_client.get("/api/status").get_json()
+        assert data["disk_free_pct"] == 12.0
+        assert data["disk_free_bytes"] == 120
+
+    def test_status_disk_fields_none_when_probe_fails(self, logged_in_client, monkeypatch):
+        import diskspace
+        monkeypatch.setattr(diskspace, "usage", lambda: None)
+        data = logged_in_client.get("/api/status").get_json()
+        assert "disk_free_pct" in data
+        assert data["disk_free_pct"] is None
+        assert data["disk_free_bytes"] is None
+

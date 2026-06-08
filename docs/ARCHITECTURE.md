@@ -757,6 +757,8 @@ bilal/
 │   ├── discovery.py              # pychromecast scanning + Cast protocol LOAD
 │   ├── geolocation.py            # IP detect + Nominatim address lookup
 │   ├── playback_log.py           # Per-speaker JSONL log with 7-day retention
+│   ├── heartbeat.py              # Dead-man's-switch ping on playback success
+│   ├── diskspace.py             # Data-volume usage probe (near-full → fire switch)
 │   └── requirements.txt
 │
 ├── web/                          # bilal-web container source
