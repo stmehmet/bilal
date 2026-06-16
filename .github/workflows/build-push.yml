@@ -1,12 +1,33 @@
 name: Build & Push Multi-Arch Docker Images
 
 on:
+  # CI side (test job): validate every PR + merge queue entry
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.jpeg'
+      - '**/*.svg'
+  merge_group:
+  # Deploy side (build job): build & push images on main + release tags.
+  # No paths filter here: a push `paths` filter also applies to tag pushes
+  # and can silently suppress release-tag deploys. Docs-only main pushes will
+  # rebuild images; split releases into a separate workflow if that matters.
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+# CI (PR/merge_group) runs cancel redundant in-flight runs; never interrupt a
+# push:main / tag image build & push (deploy) — those serialize implicitly.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io
@@ -15,6 +36,8 @@ env:
 
 jobs:
   test:
+    # Skip CI on draft PRs; always run for push / merge_group / dispatch
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,7 +59,9 @@ jobs:
 
   build:
     needs: test
-    if: github.event_name != 'pull_request'
+    # Deploy only on push (main + tags) and manual dispatch — never on
+    # merge_group: a queue entry must not push images for a transient ref.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
