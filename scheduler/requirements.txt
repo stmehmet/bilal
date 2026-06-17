@@ -2,6 +2,7 @@ pychromecast>=14.0.1
 adhanpy>=1.0.5
 requests>=2.31.0
 apscheduler>=3.10.4
+tzlocal>=5.2  # APScheduler imports this at startup; pin it explicitly so a build can't silently drop it as a transitive dep
 sqlalchemy>=2.0
 zeroconf>=0.131.0
 pytz>=2024.1

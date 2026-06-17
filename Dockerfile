@@ -24,6 +24,14 @@ RUN pip install --no-cache-dir \
     -r /tmp/sched-requirements.txt \
     -r /tmp/web-requirements.txt
 
+# Fail the build loudly if a dependency's files didn't land in the image. We've
+# shipped images where pip recorded a package's dist-info but the module dir was
+# dropped from the arm64 layer (multi-arch QEMU + gha-cache corruption): `pip
+# freeze` lists it, the runtime import explodes, and Watchtower deploys it as
+# "healthy". Importing the boot-critical packages here turns that into a build
+# failure instead of a fleet-wide outage.
+RUN python -c "import tzlocal, pytz, apscheduler, sqlalchemy, zeroconf, requests, dotenv, flask, flask_login, flask_wtf, werkzeug, gunicorn, pychromecast, adhanpy; from apscheduler.schedulers.background import BackgroundScheduler; print('dependency import smoke test passed')"
+
 # Copy application code
 COPY scheduler/ /app/scheduler/
 COPY web/ /app/web/
